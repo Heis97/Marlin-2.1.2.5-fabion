@@ -1,0 +1,1868 @@
+#include "../MarlinCore.h"
+#include "string_periphery.h"
+#include "temperature.h"
+
+//#define ETHERNET_TCP
+
+#define I2C_REC_LEN 25
+#define UDP_PACKET_LEN 60//30
+#define SPI_PACKET_LEN 56
+
+#define ETHERNET_PERIOD_MCS 1000  //8
+
+StringPeriphery  string_manager;
+
+#define SPI_TIME_ASK 110//ms
+#define RELE_PIN -1
+#define RST_W5500 PD7
+#define SPI_SS  PB12
+#define VALVE_VEL 5.0f
+
+
+
+#if NUM_BOARD == 1
+IPAddress ip(192,168,10,212);//IPAddress ip(192,168,10,212);
+unsigned int localPort = 52000; 
+uint16_t remote_port = 50000;
+byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0x01};
+
+#elif NUM_BOARD == 2
+IPAddress ip(192,168,10,211);
+unsigned int localPort = 52100; 
+uint16_t remote_port = 50001;
+byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0x02};
+#endif
+
+
+long bunk_vibro_time_counter = 0;
+
+
+EthernetServer server(localPort );
+IPAddress remote = IPAddress(192,168,10,3);
+
+String readString = String(30);
+
+     // local port to listen on
+
+// buffers for receiving and sending data
+char packetBuffer[UDP_TX_PACKET_MAX_SIZE]; //buffer to hold incoming packet,
+char  ReplyBuffer[] = "acknowledged";       // a string to send back
+
+// An EthernetUDP instance to let us send and receive packets over UDP
+EthernetUDP Udp;
+
+
+volatile byte rcvbyte = 0;
+char rcvbuf[SPI_PACKET_LEN ];
+char rcvbuf_udp[UDP_PACKET_LEN ];
+
+float med_fil_tens[TENSOMETR_NUM][MED_FILTR_LEN]{};
+long med_fil_len[TENSOMETR_NUM][MED_FILTR_LEN]{};
+
+#define SPI_SOFT2_MOSI PA7
+#define SPI_SOFT2_MISO PA6
+#define SPI_SOFT2_SCK PA5
+#define SPI_SOFT2_CS  PA4
+//uint8_t mosi, uint8_t miso, uint8_t sck
+SoftSPIB soft_spi_2(SPI_SOFT2_MOSI,SPI_SOFT2_MISO,SPI_SOFT2_SCK);
+
+
+volatile float debug_vel1 = 0.0f;
+volatile float debug_vel2 = 0.0f;
+volatile float debug_vel3 = 0.0f;
+
+bool pfled_state[10]{false,false,false,false,false,false,false,false,false,false};
+bool pfled_state_cur[10]{false,false,false,false,false,false,false,false,false,false};
+
+void StringPeriphery::init()
+{
+    pinMode(RELAY_0_PIN,OUTPUT);
+    pinMode(RELAY_1_PIN,OUTPUT);
+    pinMode(RELAY_2_PIN,OUTPUT);
+    pinMode(RELAY_3_PIN,OUTPUT);
+    pinMode(RELAY_4_PIN,OUTPUT);
+    pinMode(RELAY_5_PIN,OUTPUT);
+
+    pinMode(FAN2_PIN,OUTPUT);
+    pinMode(FAN1_PIN,OUTPUT);
+
+    WRITE(RELAY_0_PIN,0);
+    WRITE(RELAY_1_PIN,0);
+    WRITE(RELAY_2_PIN,0);
+    WRITE(RELAY_3_PIN,0);   
+
+    #if NUM_BOARD == 1
+    WRITE(FAN1_PIN,1);
+    //WRITE(FAN2_PIN,1);
+    #endif
+
+
+    #if NUM_BOARD == 2
+    max_test1.begin(MAX31865_2WIRE,1000,4300,0);
+    #else
+
+    //max_test1.begin(MAX31865_2WIRE,1000,4300,0);
+    #endif
+    DELAY_US(100000);
+
+    string_ethernet_begin_3();
+};
+
+
+void StringPeriphery::string_spi_begin()
+{
+  soft_spi_2.begin();
+  soft_spi_2.setBitOrder(MSBFIRST);
+  soft_spi_2.setDataMode(SPI_MODE2);
+  pinMode(SPI_SOFT2_CS,OUTPUT);
+   pinMode(SPI_SOFT2_MISO,INPUT);
+  memset(rcvbuf, 'k', sizeof(rcvbuf));
+};
+void StringPeriphery::test_spi_loop_part1(uint8_t num)
+{
+    //char c = 54;
+
+    /*// send test string
+    Serial.println("Sending Test String");
+
+    //tell slave to get ready
+    WRITE(SPI_SOFT2_CS, LOW);    // SS is pin 10
+    //DELAY_US(200); //give slave some time 
+
+    // send test string
+ 
+    Serial.println(num);
+     soft_spi_2.transfer(num);
+    soft_spi_2.transfer(num-1);
+    soft_spi_2.transfer(num-2);
+    soft_spi_2.transfer('\n');
+   
+        //DELAY_US(20); //required for arduino-arduino xfrs*/
+    //char c;
+
+    // send test string
+    //Serial.println("Sending Test String");
+
+    //tell slave to get ready
+     //give slave some time 
+
+    // send test string
+   /* for (const char* p = "Hello, world!\n"; c = *p; p++)
+    {
+        //Serial.println(c);
+        soft_spi_2.transfer_2(c);
+        DELAY_NS(8000); //required for arduino-arduino xfrs
+    }*/
+    //DELAY_US(10); 
+    //WRITE(SPI_SOFT2_CS, HIGH);    // SS is pin 10
+    //DELAY_US(200); 
+    //receive dat
+
+};
+
+
+unsigned long time1=0;
+
+long string_len_com_test = 0;
+
+float delta_cur_max = 0;
+int vel_count_2 = 0;
+
+void StringPeriphery::string_spi_loop()
+{
+
+    WRITE(SPI_SOFT2_CS, LOW);  
+    DELAY_US(300);
+    char c;
+
+    for(int i=0; i<SPI_PACKET_LEN;i++)
+    {
+        c = (char)soft_spi_2.transfer_2(0);
+        rcvbuf[i] = c;
+        DELAY_NS(8000);
+    }
+    DELAY_US(30);
+    WRITE(SPI_SOFT2_CS, HIGH);
+
+    unsigned long dtime=micros()-time1;
+    time1=micros();
+    if(dtime <=0 ) dtime = 1;
+    //Serial.print(dtime);
+   // Serial.print(" dtime ");
+/*
+    for(int i=0; i<SPI_PACKET_LEN;i++)
+    {
+       Serial.print(rcvbuf[i]);
+    }
+    Serial.println("->rcvbuf");
+*/
+    //--------------------------------------------------------------------
+
+    bool res_parse_ts = true;
+    float tens_count = 0;
+    cur_speed_sec_med = 0.0f;
+    for(int i=0; i< TENSOMETR_NUM;  i++)
+    {
+        float force_one;
+        long string_len_one;
+        bool res_parse;
+
+        res_parse = parse_data_ts_bin(rcvbuf,&force_one,&string_len_one,force_k[i],1+i*11);
+
+        if(res_parse)// && i!=0
+        {
+            force_cur[i] = force_one- force_off[i];
+            long dstr = string_len_one-string_lenght_int[i];
+            string_lenght_int[i] = string_len_one;
+
+            string_lenght_cur[i] = string_lenght_int[i] - string_lenght_off[i];
+            //cur_speed_enc[i] =3.1415*32* 1000000*(dstr/((float)(4096*dtime)));//  imp/sec
+            if(abs(dstr)<2) dstr = 0;
+            float speed_real = (float)(1000000l*dstr)/((float)(dtime));
+            float enc_koef = 3.1415f*r_tens/4096.0f;
+            cur_speed_enc[i] = cur_speed_enc[i] - 0.05* (cur_speed_enc[i] - enc_koef*speed_real);//  imp/sec
+            if(string_move_second[i])
+            {
+                cur_speed_sec_med +=cur_speed_enc[i];
+                tens_count+=1.0f;
+            }            
+        };
+    }
+    if(tens_count>0.5)
+    {
+        cur_speed_sec_med = cur_speed_sec_med/tens_count;
+    }
+    
+    if(string_move!=0)
+    {
+        double delta_cur = abs(orig_speed_tens_com)* 0.0005*(abs(cur_speed_sec_med) - abs(orig_speed_tens_com));
+
+        if(abs(delta_cur)>0.01)
+        {
+            delta_cur = SIGN(delta_cur) * 0.01;
+        }
+        k_enc_abs = k_enc_abs - delta_cur;
+    }
+    
+    //long len_one_test = motors.readPosOne(motor_com_axis);
+    //long dstr_test = len_one_test-string_len_com_test;
+    //string_len_com_test = len_one_test;
+    //cur_speed_enc[0] = (float)( (double)cur_speed_enc[0] -0.01* ((double)cur_speed_enc[0]- (double)(dstr_test*1000000)/(double)dtime));
+ 
+};
+
+long string_lenght_dest_one = 0;
+
+void StringPeriphery::set_current_lenght_string(float dist)
+{
+    double dist_intern = dist*4096/(r_tens*3.1415);
+    for(int i=0; i< TENSOMETR_NUM;  i++)
+    {
+        if(string_state_second[i])
+        {
+            string_lenght_off[i] = string_lenght_cur[i] - dist_intern + string_lenght_off[i];
+        }
+    }
+};
+void StringPeriphery::set_dest_lenght_string(float dist)
+{
+    double dist_intern = dist*4096/(r_tens*3.1415);
+    for(int i=0; i< TENSOMETR_NUM;  i++)
+    {
+        if(string_state_second[i])
+        {
+            string_lenght_dest[i] = dist_intern;
+        }
+    }
+    string_lenght_dest_one = dist_intern;
+};
+
+int dest_riched = 0;
+void StringPeriphery::move_pos_string(int val)
+{   
+    if(val == 0)
+    {
+        dest_riched = 0;
+        string_move = 0;
+        for(int i=0; i< TENSOMETR_NUM;  i++)
+        {
+            string_move_second[i] = 0;
+        }
+    }
+    for(int i=0; i< TENSOMETR_NUM;  i++)
+    {
+        k_enc_abs = 1.0d;
+        if(string_state_second[i])
+        {
+            dest_riched = (int)SIGN(string_lenght_dest_one-string_lenght_cur[i]);
+            if(dest_riched>0)
+            {
+                string_move_second[i] = 1;
+                string_move = 1;
+            }
+            else if (dest_riched<0)
+            {
+                string_move_second[i] = 2;
+                string_move = 2;
+            }            
+        }
+    }
+};
+
+void StringPeriphery::move_pos_string_handler()
+{
+    if(dest_riched==0){sec_remain = 0; return;}
+    //int dest_riched_check = 0;
+    for(int i=0; i< TENSOMETR_NUM;  i++)
+    {
+        if(string_state_second[i] && string_move_second[i]!=0)
+        {
+            float cur_speed = 4096*orig_speed_tens_com /(r_tens*3.1415);//cur_speed_enc[i]
+            long len_remain = string_lenght_dest_one-string_lenght_cur[i];
+            sec_remain = (int)abs(len_remain/cur_speed);
+
+            int dest_riched_cur = (int)SIGN(len_remain);
+            
+            //dest_riched_check = dest_riched_cur;
+            if(dest_riched_cur!=dest_riched)
+            {
+                dest_riched = 0;
+                string_move_second[i] = 0;
+                string_move = 0;
+                sec_remain = 0;
+            }
+        }
+    }
+    //bunk_vibro_time_counter++;
+    if(dest_riched==0)
+    {
+        for(int i=0; i< TENSOMETR_NUM;  i++)
+        {
+            if(string_state_second[i])
+            {
+                string_move_second[i] = 0;
+                string_move = 0;
+                sec_remain = 0;
+            }
+        }
+    }
+    //if(dest_riched_check = 0) dest_riched = 0;
+};
+
+void StringPeriphery::refresh_val(float val, int row,float arr[TENSOMETR_NUM][MED_FILTR_LEN])
+{
+    for(int i=1; i<MED_FILTR_LEN; i++)
+    {
+        arr[row][i-1] = arr[row][i];
+    }
+    arr[row][MED_FILTR_LEN-1] = val;
+
+}
+
+float StringPeriphery::med_filtr(int row,float arr[TENSOMETR_NUM][MED_FILTR_LEN])
+{
+    float v1 = arr[row][0];
+    float v2 = arr[row][1];
+    float v3 = arr[row][2];
+
+    if(v2>v3 )
+    {
+        if(v1>v2)
+        {
+            return v2;
+        }
+        else//v1<v2
+        {
+            if(v3>v1)
+            {
+                return v3;
+            }
+            else
+            {
+                return v1;
+            }
+        }
+    }
+    //-------------------------------------
+    //v2<v3
+    else
+    {
+        if(v1>v3)
+        {
+            return v3;
+        }
+        else//v1<v3
+        {
+            if(v2>v1)
+            {
+                return v2;
+            }
+            else//v2<v1
+            {
+                return v1;
+            }
+        }
+    }
+
+    return v2;
+}
+
+void StringPeriphery::refresh_val(long val, int row,long arr[TENSOMETR_NUM][MED_FILTR_LEN])
+{
+    for(int i=1; i<MED_FILTR_LEN; i++)
+    {
+        arr[row][i-1] = arr[row][i];
+    }
+    arr[row][MED_FILTR_LEN-1] = val;
+
+}
+
+long StringPeriphery::med_filtr(int row,long arr[TENSOMETR_NUM][MED_FILTR_LEN])
+{
+    long v1 = arr[row][0];
+    long v2 = arr[row][1];
+    long v3 = arr[row][2];
+
+    if(v2>v3 )
+    {
+        if(v1>v2)
+        {
+            return v2;
+        }
+        else
+        {
+            if(v3>v1)
+            {
+                return v3;
+            }
+            else
+            {
+                return v1;
+            }
+        }
+    }
+    //-------------------------------------
+    //v2<v3
+    else
+    {
+        if(v1>v3)
+        {
+            return v3;
+        }
+        else//v1<v3
+        {
+            if(v2>v1)
+            {
+                return v2;
+            }
+            else//v2<v1
+            {
+                return v1;
+            }
+        }
+    }
+
+    return v2;
+}
+
+
+
+void StringPeriphery::string_tcp_ethernet_begin()
+{
+    pinMode(RST_W5500,OUTPUT);
+  
+  WRITE(RST_W5500,1);
+  delay(200);
+  
+  WRITE(RST_W5500,0);
+  delay(20);
+
+  WRITE(RST_W5500,1);
+  delay(200);
+  
+  Ethernet.init(SPI_SS);
+
+  Ethernet.begin(mac, ip);
+  server.begin();
+
+
+  Serial.print("IP: ");
+  Serial.println(Ethernet.localIP());
+
+  pinMode(SPI_SS,OUTPUT);
+  pinMode(RELE_PIN,OUTPUT);
+
+};
+
+void StringPeriphery::string_ethernet_begin_3()
+{
+    pinMode(RST_W5500,OUTPUT);
+  
+  WRITE(RST_W5500,1);
+  delay(200);
+  
+  WRITE(RST_W5500,0);
+  delay(20);
+
+  WRITE(RST_W5500,1);
+  delay(200);
+  
+  Ethernet.init(SPI_SS);
+  Ethernet.begin(mac, ip);
+
+  w5500.setPHYCFGR(255);
+  Udp.begin(localPort);
+  Serial.print("IP: ");
+  Serial.println(Ethernet.localIP());
+   
+  pinMode(SPI_SS,OUTPUT);
+  pinMode(RELE_PIN,OUTPUT);
+
+};
+
+void StringPeriphery::test_ethernet_loop()
+{
+   EthernetClient client = server.available();
+   //Serial.print("IP: ");
+ // Serial.println(Ethernet.localIP());
+  if (client) {
+   // Serial.println("new client");
+ 
+    while (client.connected()) {
+      if (client.available()) {
+        char c = client.read();
+ 
+        if (readString.length() < 30){readString.concat(c);}Serial.print(c);
+ 
+        if (c == '\n') {
+ 
+          client.println("HTTP/1.1 200 OK");
+          client.println("Content-Type: text/html");
+          client.println("Connection: close");
+          client.println("Refresh: 5"); // время обновления страницы 
+          client.println();
+          client.println("<!DOCTYPE HTML>");
+          client.println("<html><meta charset='UTF-8'>");
+ 
+          client.println("<h1>Реле: ");
+ 
+        if(readString.indexOf("p=1") >=0){client.println("ON");WRITE(RELE_PIN,HIGH);}
+        else if(readString.indexOf("p=0") >=0){client.println("OFF");WRITE(RELE_PIN,LOW);}
+        else{client.println("OFF");WRITE(RELE_PIN,LOW);}
+ 
+          client.println("<h1>");
+          client.print("<input type=button value='ON' onmousedown=location.href='/?p=1'> ");
+          client.println(" <input type=button value='OFF' onmousedown=location.href='/?p=0'><br/><br/>");
+ 
+          client.println("</html>");
+          readString="";
+ 
+          break;
+ 
+        }
+      }
+    }
+ 
+    //delay(1);
+    client.stop();
+    //Serial.println("client disconnected");
+  }
+};
+
+
+bool ethernet_connected = false;
+int count_loop = 0;
+void StringPeriphery::string_tcp_ethernet_loop_2()
+{
+    count_loop++;
+
+   //if(!ethernet_connected)
+   {
+    client = server.available(); 
+   // ethernet_connected = true;
+    //Serial.println("client");
+    }
+   
+   //Serial.print("IP: ");
+   //Serial.println(Ethernet.localIP());
+    //server.println();
+
+   server.write(state_cur().c_str());
+
+
+   if (client) 
+   { 
+    //Serial.println("new client");
+        
+    
+   
+    if(client.connected()) 
+    //if(ethernet_connected)
+    {//divide commands
+
+        
+
+         memset(rcvbuf_udp, 0, sizeof(rcvbuf_udp));
+         
+        for(int i=0 ; i< UDP_PACKET_LEN - 1 && client.available(); i++)
+        {
+
+            rcvbuf_udp[i] = (char) client.read();
+        }
+
+         /*for(int i=0; i< UDP_PACKET_LEN - 1;i++)
+        {
+            Serial.print(rcvbuf_udp[i]);
+        }
+        Serial.println();*/
+        
+         int retq = -1;
+        retq = queue.get_serial_commands(rcvbuf_udp,UDP_PACKET_LEN);
+        if (retq>=0)
+        {
+
+          parser.parse(rcvbuf_udp);
+          gcode.process_parsed_command();
+        }
+
+    }
+
+    //delay(1);
+    //client.stop();
+
+    
+    //Serial.println("client disconnected");
+  }
+};
+
+
+bool connection_udp = false;
+
+void StringPeriphery::string_ethernet_loop_3() {
+   //Serial.println("eth loop");
+  int packetSize = Udp.parsePacket();
+    if (packetSize)
+    {
+        
+        if( Udp.read(rcvbuf_udp,sizeof(rcvbuf_udp))>0)
+        {
+            
+            for(int i=0; i< UDP_PACKET_LEN - 1;i++)
+            {
+                Serial.print(rcvbuf_udp[i]);
+            }
+            Serial.print(" ");
+            long new_com_num = parser.parse_s(rcvbuf_udp);
+            Serial.print(motors.control_counter);           
+            Serial.print(" ");
+            Serial.print(cur_line_num);
+            Serial.print(" ");
+            Serial.println(new_com_num);
+
+           
+            if (new_com_num-cur_line_num==1)
+            {
+                cur_line_num = new_com_num;
+                gcode.process_parsed_command();
+            }
+            
+            memset(rcvbuf_udp, 0, sizeof(rcvbuf_udp));
+        }
+    }
+
+
+    Udp.beginPacket(remote,remote_port);
+    Udp.write(state_cur().c_str());
+
+    //Serial.println(state_cur().c_str());
+    Udp.endPacket();
+
+    
+  
+}
+
+
+float StringPeriphery::get_vel(){
+    return 0;
+};
+
+int16_t StringPeriphery::get_pos()
+{int16_t pos = 0;
+    //pos  = as5600_lin.readAngle();
+    //Serial.println(pos);
+    return pos;
+};
+void StringPeriphery::set_vel_lin(float v){};
+void StringPeriphery::set_vel_powder(float v){};
+void StringPeriphery::set_vel_gateway(float v){};
+void StringPeriphery::set_turbine(float v){};
+float StringPeriphery::get_temp_cam_ext()
+{
+   // float val = max6675_temp_cam_ext.getTemperature();
+    //Serial.println(val);
+    return 0;
+};
+
+float StringPeriphery::get_temp_cam_intern1()
+{
+   // float val = max6675_temp_cam_intern_1.getTemperature();
+    return 0;
+};
+
+float StringPeriphery::get_temp_cam_intern2()
+{
+    //float val = max6675_temp_cam_intern_2.getTemperature();
+
+    return 0;
+};
+float StringPeriphery::get_v_hv()
+{
+    uint16_t val = analog_inp.readADC(1);
+    return val;
+};
+float StringPeriphery::get_a_hv()
+{
+    uint16_t val = analog_inp.readADC(2);
+    return val;
+};
+float StringPeriphery::get_v_press()
+{
+    uint16_t val = analog_inp.readADC(0);
+    return val;
+};
+
+int pfled__refr_counter = 0;
+int pfled__refr_max = 500;
+void StringPeriphery::set_pfled(uint8_t numled,bool val)
+{
+    #ifdef MAKET
+     return;
+     #else
+   pfled_state[numled] = val;
+   #endif
+};
+
+void StringPeriphery::handler_pfled()
+{
+    #ifdef MAKET
+     return;
+     #else
+    for(uint8_t numpf =0; numpf<10;numpf++)
+    {
+        if(pfled_state[numpf]!=pfled_state_cur[numpf])
+        {
+            if(numpf<8)
+            {
+                pcf_led1.digitalWrite(numpf,pfled_state[numpf]);
+            }
+            if(numpf>=8)
+            {
+                pcf_led2.digitalWrite(numpf-8,pfled_state[numpf]);
+            }
+            pfled_state_cur[numpf] = pfled_state[numpf];
+        }
+    }
+
+    pfled__refr_counter++;
+    if(pfled__refr_counter > pfled__refr_max)
+    {
+        refresh_pfled();
+        pfled__refr_counter = 0;
+    }
+    #endif
+};
+
+void StringPeriphery::refresh_pfled()
+{
+    #ifdef MAKET
+     return;
+     #else
+    for(uint8_t numpf =0; numpf<10;numpf++)
+    {
+        if(numpf<8)
+        {
+            pcf_led1.digitalWrite(numpf,pfled_state_cur[numpf]);
+        }
+        if(numpf>=8)
+        {
+            pcf_led2.digitalWrite(numpf-8,pfled_state_cur[numpf]);
+        }
+    }
+    #endif
+};
+//----------------------------------------------------
+bool swap = false;
+float cur_steps_y = 200;
+
+bool def_set = false;
+
+bool spi_chane = true;
+
+
+uint8_t count_spi = 0;
+uint8_t count_data_spi = 0;
+
+unsigned long time_measure_mc = 0;
+
+unsigned long time_measure_spi = 0;
+unsigned long time_measure_string = 0;
+
+unsigned long time_measure_test_loop =  0;
+unsigned long time_measure_bunk_vibro =  0;
+unsigned long time_measure_m_vibro =  0;
+
+unsigned long time_measure_start_led =  0;
+unsigned long time_measure_stop_led =  0;
+
+bool phase_test = true;
+
+
+int test_loop_len = 10;
+int count_vibro_wr = 0;
+
+
+bool bunk_vibro = 0;
+
+unsigned long bunk_vibro_time_relax = 4000;
+unsigned long bunk_vibro_time_work =  1000;
+
+
+bool vibro_set = false;
+bool unvibro_set = false;
+
+bool led_up = false;
+
+unsigned long cur_time_prev = micros();
+int counter = 0;
+
+//#define CHECK_DELAYS 
+
+int valve_dir = 1;
+bool valve_switched = false;
+bool valve_switched_p2 = false;
+bool vibro_switched = false;
+
+int temp_cycle_counter = 0;
+int temp_cycle_max = 20;
+
+int led_counter = 0;
+
+int wait_temp_en = 0;
+
+void StringPeriphery::idle()
+{
+    unsigned long cur_time_mc = micros();
+    unsigned long dt_mc = (cur_time_mc - time_measure_mc);
+    unsigned long dt_temp = (cur_time_mc - time_measure_temp);
+
+    if(dt_mc>ETHERNET_PERIOD_MCS)
+    {
+        time_measure_mc = cur_time_mc;
+        string_ethernet_loop_3();
+    }
+
+    #if NUM_BOARD == 2
+    if(dt_temp>period_manage_mcs  )
+    {        
+        //uint16_t temp_raw = max_test1.readRaw();
+        //thermalManager.temp_hotend[0].setraw(temp_raw);
+
+        float chamber_temp_cur = max_test1.temperature();
+        //Serial.println(chamber_temp_cur);
+
+        temp_val_ext = temp_val_ext - 0.01*(temp_val_ext-chamber_temp_cur);   //0.013
+        thermalManager.temp_hotend[0].celsius = temp_val_ext;
+        time_measure_temp = cur_time_mc;
+        
+        if (heater_en)
+        {
+            if(abs(thermalManager.temp_hotend[0].celsius-thermalManager.temp_hotend[0].target)>1.0f)
+            {
+                wait_temp_en = 1;
+            }
+            else
+            {
+                wait_temp_en = 0;
+            }
+        }
+        else
+        {
+            wait_temp_en = 0;
+        }
+    }
+    #endif
+
+
+    //--------------------------------------------------------
+};
+
+
+int StringPeriphery::get_request_i2c(int adr, char rec_i2c[])
+{
+    char rec_i2c_int[I2C_REC_LEN];
+    int i_m =0; 
+    bool begin_data = false;
+    bool end_data = false;
+    Wire.requestFrom(adr,I2C_REC_LEN);
+    //Serial.println("__________");
+   // Serial.println(Wire.available());
+    while(Wire.available() && i_m<I2C_REC_LEN) 
+    {  
+      int b = Wire.read();
+      //Serial.println(b);
+      i_m++;
+      if (b == 98)
+      {
+        i_m = 0; 
+        begin_data = true;            
+      }
+     
+      if(begin_data && !end_data)
+      {
+        if(b<254)
+        {
+          rec_i2c_int[i_m] = (char)b;
+          
+          //Serial.print(rec_i2c_int[i_m] );
+        }
+        else
+        {
+
+          //Serial.println("  err ");
+          return -1;
+        }      
+      } 
+       if (b == 99)
+      {
+        end_data = true;       
+      }
+    }
+    
+    if(!begin_data || !end_data) return -1;
+    //Serial.println("  ok ");
+    for(int i=0; i<I2C_REC_LEN;i++)
+    {
+      rec_i2c[i] = rec_i2c_int[i];
+    }    
+
+    return 0;
+    //Serial.println( rec_i2c);
+};
+
+uint8_t StringPeriphery::crc8(const void* data, size_t length, uint8_t crc = 0) 
+{
+    const uint8_t* p = (const uint8_t*)data;
+    while (length--) {
+        uint8_t b = *p++, j = 8;
+        while (j--) {
+            crc = ((crc ^ b) & 1) ? (crc >> 1) ^ 0x8C : (crc >> 1);
+            b >>= 1;
+        }
+    }
+    return crc;
+}
+
+const uint16_t CRC16_POLY = 0x1021;
+const uint16_t CRC16_INIT = 0xFFFF;
+
+uint16_t StringPeriphery::crc16(const uint8_t *data, size_t length) 
+{
+    uint16_t crc = CRC16_INIT;
+    for (size_t i = 0; i < length; ++i) 
+    {
+        crc ^= (uint16_t)data[i] << 8; // XOR current byte into the high byte of CRC
+        for (int j = 0; j < 8; ++j) {
+            if (crc & 0x8000) {
+                crc = (crc << 1) ^ CRC16_POLY;
+            } else {
+                crc <<= 1;
+            }
+        }
+    }
+    return crc;
+}
+
+bool StringPeriphery::parse_data_ts_bin(char _data[], float* force, long* string_len,float _force_k, uint8_t start_ind )
+{
+  byte tens_str[4];
+  byte enc_str[4];
+  byte sum_str[2];
+
+  byte data_out[11];
+  memset(data_out,0,sizeof(data_out));
+    if((int)_data[start_ind]!= 98) return false;
+
+    uint16_t sum_ins = 0;
+
+    uint8_t j = 0;
+    uint8_t k = 0;
+    for(uint8_t i = start_ind+1; i < start_ind+5; i++)
+    {
+        enc_str[j] = _data[i];  j++;
+        data_out[k] = _data[i]; k++;
+       
+    };  
+    j = 0;
+    for(uint8_t i = start_ind+5; i < start_ind+9; i++)
+    {
+        tens_str[j] = _data[i]; j++;
+        //data_out[k] = _data[i]; k++;
+    };
+
+    for(uint8_t i = 0; i < 9; i++)
+    {
+        data_out[i] = _data[start_ind+i];
+    };
+    
+
+    j = 0;
+    for(uint8_t i = start_ind+9; i < start_ind+11; i++)
+    {
+        sum_str[j] = _data[i]; j++;
+        //_data[i] = 0;
+    };
+
+    uint16_t crc_in = crc16(data_out,sizeof(data_out));
+    uint16_t sum_out;
+    long len,tens;
+    memcpy(&sum_out,sum_str,sizeof(sum_out));
+    memcpy(&len,enc_str,sizeof(len));
+    memcpy(&tens,tens_str,sizeof(tens));
+    sum_ins = crc_in;
+    //if(start_ind==1)
+    /*{
+        Serial.print(" len: " );
+        Serial.print(len);
+        Serial.print(" tens: " );
+        Serial.print(tens);
+        Serial.print(" s_in: " );
+        Serial.print(sum_ins);
+        Serial.print(" s_out: " );
+        Serial.print(sum_out);
+    }
+    Serial.println(" ");*/
+
+    if(sum_ins==sum_out)
+    {
+        *force =  (float)tens/1000.0f;
+        *string_len =  len;//+100l;
+        return true;
+    }
+    else{  
+        *force =  -3.0f;
+        *string_len =  -2l;
+        Serial.println("sum_ins!=sum_out");
+        return false;
+    } 
+};
+
+bool StringPeriphery::parse_data_ts(char _data[], float* force, long* string_len,float _force_k, uint8_t start_ind )
+{
+  int ind_d = 0;
+  int ind_s = 0;
+  int ind_c = 0;
+  String tens_str = "";
+  String enc_str = "";
+  for(uint8_t i = start_ind+1; i < SPI_PACKET_LEN -2;i++)
+  {
+    if((int)_data[i]== 0) return false;
+   // Serial.print(_data[i]);
+    if((int)_data[i]== 100) 
+    {
+      ind_d = i;
+    }
+    if((int)_data[i]== 115) 
+    {
+      ind_s = i;
+    }
+    if((int)_data[i]== 99) 
+    {
+      ind_c = i;
+      break;
+    }
+  }  
+   /*Serial.print(ind_d);
+   Serial.print(" ");
+   Serial.print(ind_s);
+   Serial.print(" ");
+   Serial.print(ind_c);
+   Serial.println(" ");*/
+  if(ind_s<=ind_d+1){
+    // Serial.println("ind_s<=ind_d+1");
+     return false;} 
+
+    //if(ind_s-ind_d>4)
+    {
+        for(int i=ind_d+1; i<ind_s;i++) // for(int i=ind_d+1; i<ind_s-3;i++)
+        {
+            tens_str+=_data[i];
+        } 
+    }
+    //else
+    {
+            //tens_str = "0";
+    }
+  //Serial.print(tens_str);
+  //Serial.print(tens_str);
+  if(ind_c<=ind_s+1)
+  {
+   // Serial.println("ind_c<=ind_s+1");
+    return false;
+  }
+   
+  for(int i=ind_s+1; i<ind_c;i++)
+  {
+    enc_str += _data[i];
+  } 
+  //Serial.println(enc_str);
+  long data_f = tens_str.toInt();//!!!!!!!!!!
+  *force =  (float)data_f;///1000.0f;
+
+  *string_len = enc_str.toInt();
+  return true;
+  //Serial.println(tens);
+  //Serial.println(enc);
+};
+
+int* StringPeriphery::divide_data_parse(char _data[],int inds[])
+{
+    int data_count = 0;
+    int ind_st_cur = 0;
+    int ind_mid_cur = 0;
+    int ind_end_cur = 0;
+    bool start = false;
+    bool middle = false;
+    bool stop = false;
+    for(int i= 1; i<SPI_PACKET_LEN ;i++)
+    {
+        if((int)_data[i]== 100)  {start = true;     ind_st_cur = i ;}
+        if((int)_data[i]== 115)  {middle = true;    ind_mid_cur = i ;}
+        if((int)_data[i]== 99)   {stop = true;      ind_end_cur = i ;}
+
+        if(start && middle && stop && ind_st_cur<ind_mid_cur<ind_end_cur && data_count<5)
+        {
+            inds[data_count] = ind_st_cur-1;
+
+            data_count++;
+            start = false;
+            middle = false;
+            stop = false;
+
+            ind_st_cur = 0;
+            ind_mid_cur = 0;
+            ind_end_cur = 0;
+    
+        }
+    } 
+
+
+    return inds;
+}
+
+
+void  StringPeriphery::set_vel_strings(float vel)
+{
+
+    for(int i=0; i<TENSOMETR_NUM; i++)
+    {
+        orig_speed_tens[i] = vel;
+    }
+    orig_speed_tens_com = vel;
+   
+};
+
+void  StringPeriphery::reset_vel_strings()
+{
+
+    for(int i=0; i<TENSOMETR_NUM; i++)
+    {
+        koef_tens[i] = 1;
+    }
+    //orig_speed_tens_com = vel;
+   
+};
+
+
+
+
+void StringPeriphery::set_hv_v(uint16_t v)
+{
+    mcp4725_hv_v.setValue(v);
+    
+};
+void StringPeriphery::set_hv_i(uint16_t v)
+{
+    //mcp4725_hv_i.setValue(v);
+};
+void StringPeriphery::set_press(uint16_t v)
+{
+    pressure_dest = v;
+    mcp4725_press.setValue(v);
+
+};
+
+void StringPeriphery::set_turbo(uint16_t v)
+{
+
+
+
+turbo_val_cur = v;
+if(v>20)
+{
+
+    WRITE(TURBO_PIN,1);
+}
+else
+{
+    
+
+}
+//Serial.println(turbo_val_cur);
+
+
+};
+
+void StringPeriphery::set_reley_1(int v)
+{
+    int v_set = v;
+    //#ifdef INVERT_RELE
+    if(v==0) v_set = 1;
+    else v_set = 0;
+    //#endif
+    WRITE(RELAY_0_PIN,v_set);
+    reley_1 = v;
+    //Serial.print("rel 1 ");
+    //Serial.println(v_set);
+};
+
+void StringPeriphery::set_reley_i(int v, int i)
+{
+    int v_set = v;
+    switch(i)
+    {
+        case 0: {WRITE(RELAY_0_PIN,v_set);break;};
+        case 1: {WRITE(RELAY_1_PIN,v_set);break;};
+        case 2: {WRITE(RELAY_2_PIN,v_set);break;};
+        case 3: {WRITE(RELAY_3_PIN,v_set);break;};
+    }
+
+    reley_1 = v;
+
+};
+
+void StringPeriphery::set_reley_2(int v)
+{
+   int v_set = v;
+    //#ifdef INVERT_RELE
+    if(v==0) v_set = 1;
+    else v_set = 0;
+    //#endif
+    WRITE(RELAY_1_PIN,v_set);
+    reley_2 = v;
+
+   // Serial.print("rel 2 ");
+    //Serial.println(v_set);
+};
+
+void StringPeriphery::set_reley_heater(int ind, int v)
+{
+    if(ind == 0) set_reley_1(v);
+    else if(ind == 1) set_reley_2(v);
+};
+
+void StringPeriphery::set_reley_HV(int v)
+{
+    int v_set = v;
+    #ifdef INVERT_RELE
+    if(v==0) v_set = 1;
+    else v_set = 0;
+    #endif
+    WRITE(RELAY_2_PIN,v_set);
+    reley_HV = v;
+};
+void StringPeriphery::set_reley_press(int v)
+{
+   int v_set = v;
+    /*#ifdef INVERT_RELE
+    if(v==0) v_set = 1;
+    else v_set = 0;
+    #endif */
+    WRITE(PRESS_PIN,v_set);
+    reley_press = v;
+};
+
+void StringPeriphery::set_heater_2(int v)
+{
+    WRITE(HEATER_2_PIN,v);
+    //turbo = v;
+};
+void StringPeriphery::set_heater_3(int v)
+{
+    WRITE(HEATER_3_PIN,v);
+};
+
+void StringPeriphery::set_24v_out(int v)
+{
+    int v_set = v;
+    #ifdef INVERT_RELE
+    if(v==0) v_set = 1;
+    else v_set = 0;
+    #endif
+   WRITE(RELAY_4_PIN,v_set);
+   reley_24_out = v;
+}
+
+void StringPeriphery::set_24v_reset(int v)
+{
+    int v_set = v;
+     #ifdef INVERT_RELE
+    if(v==0) v_set = 1;
+    else v_set = 0;
+    #endif
+    WRITE(RELAY_5_PIN,v_set);
+}
+
+
+
+bool release_process_done[TENSOMETR_NUM] = {false,false,false,false,false};
+bool pull_process_done[TENSOMETR_NUM] = {false,false,false,false,false};
+uint8_t release_counter[5] = {0,0,0,0,0};
+float integr_part = 0;
+int cur_send = 0;
+int speed_string_count = 0;
+String StringPeriphery::state_cur()
+{
+    //long steps = (long)motors.readSteps()[0];
+    //bool homed = (bool)motors.readHoming()[0];
+    String delim = " ";
+    
+
+    /*String(temp_val_int1)+ delim+//2
+    String(temp_val_int2)+delim+//3
+    String(temp_val_ext)+delim+//4
+    String(orig_speed_tens_com)+delim+//5
+    String(reley_24_out)+delim+//6  */
+    
+
+    String state = "";
+    if (cur_send>=3){cur_send = 0;};
+    //cur_send = 0;
+    motors.debug_val  = READ(motors._pinStop[3]);
+    int homing_delta_done =(int)(motors._homing_need[0]||motors._homing_need[1]||motors._homing_need[2]);
+    int move_steppers = 0;
+    int move_kinem = 0;
+    if(motors._steps[0]!=0 ||motors._steps[1]!=0 ||motors._steps[2]!=0 || motors._steps[3]!=0 ||motors._steps[4]!=0 ||motors._steps[5]!=0 ||motors._steps[6]!=0 ||motors._steps[7]!=0) move_steppers = 1;
+    if(motors._steps[0]!=0 ||motors._steps[1]!=0 ||motors._steps[2]!=0 || motors._steps[7]!=0) move_kinem = 1;
+
+
+    state = "st"+String(NUM_BOARD)+" "+
+    String(cur_line_num)+delim+            //0          //1
+    String(motors.ring_buf_all_counter_write_max)+delim+//1           //2    //ring_buf_control_counter   //motors.ring_buf_all_counter_write
+    String(cur_send)+delim+               //2           //3  cur_send   
+    String(move_steppers)+String(move_kinem)+String(motors.ring_buf_en)+String(motors.wait_time_counter_en)+String(wait_temp_en)+delim;//3 
+    if(cur_send==0)
+    {
+        state +=          
+        String((int)motors.delta_calibr)+delim+//4     //5
+        String(motors._laser_end_val[0])+String(motors._laser_end_val[1])+delim+//5           //6           String(motors.ring_buf_en)+delim+//5           //6
+        String(motors._endstop_val[0])+String(motors._endstop_val[1])+String(motors._endstop_val[2])+String(motors._endstop_val[3])+String(motors._endstop_val[4])+String(motors._endstop_val[5])+String(motors._endstop_val[6])+String(motors._endstop_val[7])+delim+//6            //7
+        String((int)(thermalManager.temp_hotend[0].celsius*100))+delim+       //7            //8
+        String(motors.control_counter)+delim+      //8            //9
+        String(motors.delta_tcp_serach_x)+String(motors.delta_tcp_serach_y)+String(motors.delta_tcp_serach_z)+delim+                           //9            //10
+        String(motors._tool_recognise_val[0])+String(motors._tool_recognise_val[1])+String(motors._tool_recognise_val[2])+String(motors._tool_recognise_val[3])+ String(motors._tool_recognise_val[4])+String(motors._tool_recognise_val[5])+String(motors._tool_recognise_val[6])+String(motors._tool_recognise_val[7])+delim+                           //10  
+        String(motors.software_endstop_en[0])+String(motors.software_endstop_en[1])+String(motors.software_endstop_en[2])+String(motors.software_endstop_en[3])+ String(motors.software_endstop_en[4])+String(motors.software_endstop_en[5])+String(motors.software_endstop_en[6])+String(motors.software_endstop_en[7])+delim;//10       //11
+    }
+    else if(cur_send==1)
+    {
+        state += 
+        String(motors._pos[0])+delim+//3       //4
+        String(motors._pos[1])+delim+//4       //5
+        String(motors._pos[2])+delim+//5       //6
+        String(motors._pos[3])+delim+//6       //7
+        String(motors._pos[4])+delim+//7       //8
+        String(motors._pos[5])+delim+//8       //9
+        String(motors._pos[6])+delim+//9       //10
+        String(motors._pos[7])+delim;//10      //11
+        //String(motors.control_counter)+delim;//10      //11
+    }
+    else if(cur_send==2)
+    {
+        state += 
+        /*String(motors.ring_buf_all_counter_write_max)+delim+//3
+        String(motors.ring_buf_cur_count)+delim+//4
+        String(motors._endstop_val[2])+delim+//5
+        String(motors._endstop_val[3])+delim+//6
+        String(motors._endstop_val[4])+delim+//7
+        String(motors._endstop_val[5])+delim+//8
+        String(motors._endstop_val[6])+delim+//9
+        String(motors._endstop_val[7])+delim;//10*/
+
+        String(motors.ring_buf_all_counter_write)+delim+//3
+        String(motors.ring_buf_counter)+delim+//4
+        String(motors.ring_buf_end)+delim+//4
+        String(motors.ring_buf_cur_line)+delim+//5
+        String(motors.ring_buf_time[motors.ring_buf_cur])+delim+//6
+        String(motors.ring_buf_prog_num[motors.ring_buf_cur])+delim+//6
+        String(motors.cur_prog_num)+delim+//7
+        String(motors.ring_buf_x[motors.ring_buf_cur])+delim;//8
+        //String(motors.control_counter)+delim;//10      //11
+
+       /*String(motors.servo_counter_20ms[0])+delim+//3
+        String(motors.servo_counter_20ms[1])+delim+//4
+        String(motors.servo_counter_20ms_max[0])+delim+//5
+        String(motors.servo_counter_20ms_max[1])+delim+//6
+        String(motors.servo_counter_work[0])+delim+//7
+        String(motors.servo_counter_work[1])+delim+//8
+        String(motors.servo_counter_work_max[0])+delim+//9
+        String(motors.servo_counter_work_max[1])+delim;//10*/
+
+        
+    }
+    else if(cur_send==3)
+    {
+        state += 
+        String(motors._steps[0])+delim+//3
+        String(motors._steps[1])+delim+//4
+        String(motors._steps[2])+delim+//4
+        String(motors._steps[3])+delim+//5
+        String(motors._steps[4])+delim+//6
+        String(motors._steps[5])+delim+//6
+        String(motors._steps[6])+delim+//7
+        String(motors._steps[7])+delim;//8
+     //String(motors.control_counter)+delim;//10      //11
+    }
+    else if(cur_send==4)
+    {
+        /*state += 
+        String(motors.ring_buf_cur_count)+delim+//(int)thermalManager.temp_hotend[0].target)+delim+//3
+        String(motors.ring_buf_cur_line)+delim+//4
+        String(motors.ring_buf_counter)+delim+//5
+        String(motors._laser_end_val[0])+delim+//6
+        String(motors._laser_end_val[1])+delim+//7
+        String(motors._steps[0])+delim+//8
+        String(thermalManager.getHeaterPower((heater_id_t)0))+delim+//9
+        String(motors._endstop_val[7])+delim;//10*/
+
+        state += 
+        String(motors._tool_recognise_val[0])+delim+//3
+        String(motors._tool_recognise_val[1])+delim+//4
+        String(motors._tool_recognise_val[2])+delim+//5
+        String(motors._tool_recognise_val[3])+delim+//6
+        String(motors._tool_recognise_val[4])+delim+//7
+        String(motors._tool_recognise_val[5])+delim+//8
+        String(motors._tool_recognise_val[6])+delim+//9
+        String(motors._tool_recognise_val[7])+delim;//10
+        //String(motors.control_counter)+delim;//10      //11
+    }
+
+    #ifndef KINEMATIK
+
+    state +=  "0"+delim+                           //8            //9
+        "0"+delim+                           //9            //10
+        "0"+delim;                           //10            //11
+    #endif
+    cur_send++;
+    
+
+    return state;
+};
+
+
+
+void StringPeriphery::report_state()
+{
+    Serial.println(state_cur());
+};
+
+
+//float temp_dest = 0;
+//int ind_sensor = 0;
+//int heater_en = 0;
+
+void StringPeriphery::manage_heat()
+{
+    if(heater_en == 1)
+    {
+
+        
+        float cur_temp = 0;
+        if(ind_sensor==0)
+        {
+            cur_temp = temp_val_ext;
+            
+        }
+        else if(ind_sensor==1)
+        {
+            cur_temp = temp_val_int1;
+            
+        }
+        else if(ind_sensor==2)
+        {
+            cur_temp = temp_val_int2;
+        }
+        else
+        {
+            set_reley_1(0);
+            set_reley_2(0);
+            return;
+        }
+        if(cur_temp<temp_dest+temp_hyst)
+        {
+            set_reley_1(1);
+            set_reley_2(1);
+        }
+        else if(cur_temp>temp_dest-temp_hyst)
+        {
+            set_reley_1(0);
+            set_reley_2(0);
+        }
+    }
+    else
+    {
+        
+        set_reley_1(0);
+        set_reley_2(0);
+    }
+}
+
+
+void StringPeriphery::manage_heat_duty(float cur_temp)
+{
+    if(heater_en == 1)
+    {
+        
+        duty_1 = manage_heat_duty_single(0, cur_temp,kp_1);
+        duty_2 = manage_heat_duty_single(1, cur_temp,kp_2);
+
+        if(duty_1 < 0) heating_1 = false; else heating_1 = true;
+        if(duty_2 < 0) heating_2 = false; else heating_2 = true;
+
+        heat_pwm_control();
+    }
+    else
+    {
+        set_pfled(PFLED_HEAT,false);
+        set_reley_1(0);
+        set_reley_2(0);
+    }
+
+    
+}
+
+void StringPeriphery::motors_free(uint8_t v)
+{
+    if (v==0)
+    {
+        for(int i=0; i< TENSOMETR_NUM; i++)
+        {
+            motors.wake_up(motors_tens[i]);
+            
+        }
+    }
+    else
+    {
+        for(int i=0; i< TENSOMETR_NUM; i++)
+        {
+            motors.sleep(motors_tens[i]);
+        }
+    }
+    motors_free_state = v;
+};
+
+void StringPeriphery::motors_free_bunker(uint8_t v)
+{
+    if (v==0)
+    {
+        for(int i=0; i< 3; i++)
+        {
+            motors.wake_up((byte)i);            
+        }
+    }
+    else
+    {
+        for(int i=0; i< 3; i++)
+        {
+            motors.sleep((byte)i);
+        }
+    }
+    //motors_free_state = v;
+};
+
+void StringPeriphery::tare_tens()
+{
+    taring_process_all = false;
+    for(int8_t i=0; i<TENSOMETR_NUM;i++)
+    {
+        motors.set_cur_k(1.0f,motors_tens[i]);
+        motors.setVelDest(taring_release_vel,motors_tens[i]);
+        
+        if(taring_process[i])
+        {
+            force_off[i] += force_cur[i];
+            release_counter[i] = 0;
+            release_process_done[i] = false;
+            pull_process_done[i] = false;
+            taring_process_all = true;
+        }
+        
+    }
+
+    //tare_tens_state = v;
+};
+
+
+void StringPeriphery::tare_tens_handler_one(uint8_t v)
+{
+    if(taring_process[v])
+    {
+        if(!release_process_done[v])  tare_tens_release(v);
+        if(release_process_done[v] && !pull_process_done[v]) tare_tens_pull(v);
+        if(release_process_done[v] && pull_process_done[v])
+        {
+            taring_process[v] = false;
+        }
+    }
+};
+void StringPeriphery::tare_tens_handler()
+{
+   for(int8_t i=0; i<TENSOMETR_NUM;i++) tare_tens_handler_one(i);
+};
+void StringPeriphery::tare_tens_pull(uint8_t v)
+{
+    Serial.println("tare_tens_pull");
+    motors.step(-10*dist_m,motors_tens[v]);
+    if( force_cur[v] - force_dest[v] < 1)
+    {
+        pull_process_done[v] = true;
+        motors.step(0L,motors_tens[v]);  
+        
+    }
+};
+
+void StringPeriphery::tare_tens_release(uint8_t v)
+{
+    motors.step(10*dist_m,motors_tens[v]);
+    /*if(abs(med_fil_tens[v][2]-med_fil_tens[v][0])< 2.0f)
+    {
+        release_counter[v]++;
+        if(release_counter[v]>3)
+        {
+            release_process_done[v] = true;
+            motors.step(0L,motors_tens[v]); 
+            force_off[v] += force_cur[v];
+             motors.setVel(taring_pull_vel,motors_tens[v]);
+        }
+         
+    }*/
+    if(abs(force_cur[v])< 1.0f)
+    {
+        Serial.println("tare_tens_release if");
+        release_counter[v]++;
+        if(release_counter[v]>8)
+        {
+            Serial.println("release_counter[v]>3");
+            release_process_done[v] = true;
+            motors.step(0L,motors_tens[v]); 
+            motors.set_cur_k(1.0f,motors_tens[v]);
+            motors.setVelDest(taring_pull_vel,motors_tens[v]);
+        }
+    }
+    else
+    {
+        Serial.println("tare_tens_release else");
+        force_off[v] += force_cur[v];
+        release_counter[v] = 0;
+    }
+};
+
+
+int StringPeriphery::manage_heat_duty_single(int ind, float temp,float kp)
+{    
+    bool heating = false;
+    int duty = 0;
+    if(temp < temp_dest+ temp_hyst)
+    {
+        
+        heating = true;
+    }
+    else
+    {
+        heating = false;
+    }
+
+    if(!heating)
+    {
+        return -1;
+    }
+    float d_temp = temp_dest - temp;
+    
+#ifdef MAKET
+    float integr_max = (7.2*temp - 40);// 158 = 13%;  88 = 6%
+     integr_part += d_temp * 0.0001;
+    #else
+float integr_max = (21.335*temp - 614.76)*1.05;// 
+ integr_part += d_temp * 0.0001;
+#endif
+   
+    if(integr_part>integr_max) integr_part = integr_max;
+
+    duty = kp * d_temp + integr_part;
+    
+    if(duty>cycle_time-200) duty = cycle_time-200;
+    
+
+    return duty;
+}
+void StringPeriphery::heat_pwm_control()
+{
+    if(heating_1) heat_pwm_control_single(0, duty_counter, duty_1); else  set_reley_1(0);
+    if(heating_2) heat_pwm_control_single(1, duty_counter, duty_2); else  set_reley_2(0);
+    
+    duty_counter++;
+    if(duty_counter>cycle_time) 
+    {
+        duty_counter = 0;       
+    }
+};
+
+void StringPeriphery::heat_pwm_control_single(int ind, int counter, int duty)
+{
+    if(counter==ind*200)
+    {
+        set_pfled(PFLED_HEAT,true);
+        set_reley_heater(ind,1);
+    }
+    else if(counter >= duty)
+    {
+        set_pfled(PFLED_HEAT,false);
+        set_reley_heater(ind,0);
+    }
+
+};
+
+
+
+void StringPeriphery::set_heaters_enable(int v)
+{
+    heater_en = v;
+
+    if(heater_en == 1)
+    {
+        thermalManager.setTargetHotend(temp_dest, 0);
+       
+    }
+    else
+    {
+         thermalManager.disable_all_heaters();
+    }
+    
+
+};
+void StringPeriphery::set_heaters_temp(float v)
+{
+    temp_dest = v;
+
+    if(heater_en == 1)
+    {
+        thermalManager.setTargetHotend(temp_dest, 0);
+    }
+    else
+    {
+        thermalManager.disable_all_heaters();
+    }
+};
+
+void StringPeriphery::set_heaters_ind(int v)
+{
+    ind_sensor = v;
+};
+void StringPeriphery::set_reporting(bool state){
+    reporting = state;
+};
+
+
+
+
+int StringPeriphery::manage_axis_vibro(AxisEnum Axis,  int vibr, int k, int k_m,int dir,int _vibr_a){
+    int sign = 1;
+    if(vibr==1) 
+    {
+        if(k_m - k <= _vibr_a)
+        { 
+            sign=-1; 
+            k = 0;
+        };
+    }
+    //destination[Axis] = current_position[Axis] + dir*sign*dist_m; 
+
+    motors.step((long int)(dir*steps_m*sign),Axis);
+    k++;
+    return k;
+};
+
+int StringPeriphery::manage_axis_vibro_simple(AxisEnum Axis,int dir,  int vibr, int k, int k_m){
+    int k_sign = SIGN (k);
+    int k_abs = abs(k);
+    
+    if(vibr==1 )
+    {
+        if(k_abs>k_m) 
+        {
+            k_sign*=-1;
+            k_abs = 0;
+        }
+        k_abs++;
+    }
+    
+    motors.step((long int)(dir*steps_m*k_sign),Axis);
+   
+    return k_sign *k_abs;
+};
+
+void StringPeriphery::manage_axis(AxisEnum Axis, int dir){
+    motors.step((long int)(dir*steps_m),Axis);
+};
+
+
+
+double StringPeriphery::comp_one_tension(double koef_tens, double koef_v_tens, float force_cur, float force_dest,int en)
+{
+    if(en==0) return koef_tens;
+    double df = force_dest - force_cur;
+    koef_tens += (double)string_direction* df*koef_v_tens/orig_speed_tens_com;
+    return koef_tens;
+};
+
+void StringPeriphery::comp_speeds_string()
+{
+    if(taring_process_all)
+    {
+        taring_process_all = false;
+        for(int8_t i=0; i<TENSOMETR_NUM;i++)
+        {
+            if(taring_process[i])
+            {
+                taring_process_all = true;
+            }
+        }
+        return;
+    }
+
+    speed_string_count++;
+    for(int i=0; i<TENSOMETR_NUM;i++) 
+    {
+        if(string_move_second[i])
+        {
+            koef_tens[i] = comp_one_tension(koef_tens[i],koef_v_tens[i],force_cur[i],force_dest[i],string_move_second[i]);
+            double p_part = (double)string_direction*0.1*(force_dest[i]-force_cur[i])/orig_speed_tens[i];
+            motors.set_cur_k(koef_tens[i]+p_part, motors_tens[i]);
+            //cur_speed_tens[i] = koef_tens[i]*orig_speed_tens[i];
+            motors.setVelDest(k_enc_abs* orig_speed_tens[i],motors_tens[i]);//k_enc_abs* 
+        }        
+    }   
+    motors.setVelDest(k_enc_abs* orig_speed_tens_com,motor_com_axis);//k_enc_abs* 
+}
+
+
+
+

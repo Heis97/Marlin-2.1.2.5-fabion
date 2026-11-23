@@ -1,0 +1,46 @@
+//M576 linear speed control
+#include "../../../inc/MarlinConfig.h"
+#include "../../gcode.h"
+#include "../../../module/planner.h"
+#include "../../../module/string_periphery.h"
+
+void GcodeSuite::M587() {
+
+    if (parser.seen('I') && parser.seen('R')) { motors.steps_pr_mm[parser.byteval('I')] = parser.floatval('R');}
+    if (parser.seen('I') && parser.seen('S')) { motors.step(parser.floatval('S'),parser.byteval('I')); }
+    if (parser.seen('I') && parser.seen('S') && parser.seen('L')) { motors.step(parser.longval('S'),parser.byteval('I')); }
+    if (parser.seen('I') && parser.seen('P')) { motors.gotopos(parser.floatval('P'),parser.byteval('I')); }//motors.setVel(0,parser.byteval('I'));  
+    if (parser.seen('I') && parser.seen('P') && parser.seen('L')) { motors.gotopos(parser.longval('P'),parser.byteval('I')); }
+    if (parser.seen('I') && parser.seen('M')) { motors.setVel(parser.floatval('M'),parser.byteval('I')); }
+    if (parser.seen('I') && parser.seen('H')) { motors.home_axis(parser.byteval('I')); }
+    if (parser.seen('I') && parser.seen('D')) { motors.set_motor_dir(parser.intval('D'),parser.byteval('I')); }
+
+    if (parser.seen('F'))  { motors.sleep_all();}
+    if (parser.seen('W'))  { motors.wake_up_all();}
+    
+
+    if (parser.seen('I') && parser.seen('A')) 
+    { 
+        motors.setAcs(parser.floatval('A'),parser.byteval('I')); 
+    }
+    if (parser.seen('I') && parser.seen('V')) { motors.setVelDest(parser.floatval('V'),parser.byteval('I'));  }
+    if (parser.seen('I') && parser.seen('E')) { motors.end_inv[parser.byteval('I')] = parser.intval('E');   }
+    
+    if (parser.seen('I') && parser.seen('K')) { motors.home_dir_sdp[parser.byteval('I')] = parser.intval('K');}    
+    if (parser.seen('I') && parser.seen('B')) { motors.home_pos[parser.byteval('I')] = parser.longval('B');}
+
+    if (parser.seen('I') && parser.seen('C')) { motors._pos[parser.byteval('I')] = parser.longval('C');}
+    if (parser.seen('I') && parser.seen('Q')) {        
+        if(parser.intval('Q')== -1) motors.sleep(parser.byteval('I'));  
+        if(parser.intval('Q')== 1) motors.wake_up(parser.byteval('I'));     
+    }
+
+
+    if (parser.seen('I') && parser.seen('Z'))  motors.software_endstop_en[parser.byteval('I')] = parser.intval('Z');  
+
+    if (parser.seen('I') && parser.seen('X'))  motors.software_endstop_min[parser.byteval('I')] = parser.longval('X');  
+    if (parser.seen('I') && parser.seen('Y'))  motors.software_endstop_max[parser.byteval('I')] = parser.longval('Y'); 
+  
+    
+
+}
