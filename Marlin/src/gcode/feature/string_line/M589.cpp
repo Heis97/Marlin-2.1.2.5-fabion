@@ -7,7 +7,8 @@
 void GcodeSuite::M589() {
     if (parser.seen('X')) 
     {
-        motors.home_delta(parser.floatval('X'));
+        // Fabion: базирование всех осей — сначала Z1..Z3, потом X,Y
+        motors.home_all_cartesian(parser.floatval('X'));
     }
     
     if (parser.seen('Y')) 

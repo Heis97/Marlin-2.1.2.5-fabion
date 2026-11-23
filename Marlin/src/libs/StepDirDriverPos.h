@@ -1,7 +1,9 @@
 ﻿
 
 #define AXIS_NUM 8
-#define SERVO_NUM 2
+#define SERVO_NUM 3
+// Пин -1 = не подключён: к нему не обращаемся
+#define PIN_OK(p) ((int)(p) >= 0)
 #define RING_BUF_NUM 400
 #define MIN_DIV  10
 #include <Arduino.h>
@@ -66,6 +68,18 @@ class StepDirDriverPos {
     void sleep_string(byte motors_tens[5]);
 
     void  tool_recognise();
+
+    // Fabion: какие моторы ведёт кольцевой буфер вместо Z и E.
+    // Z1..Z3 = моторы 2..4, E1..E3 = моторы 5..7. M588 K<z> L<e>
+    void  set_ring_axes(int z_axis, int e_axis);
+    bool  is_ring_axis(byte num);
+    volatile byte ring_z_axis = 2;
+    volatile byte ring_e_axis = 7;
+
+    // Fabion: базирование всех осей (M589 X): сначала Z1..Z3, затем X,Y
+    void  home_all_cartesian(float div_vel);
+    void  home_seq_handler();
+    volatile int home_seq_stage = 0;
 
     long cur_prog_num = 0;
 

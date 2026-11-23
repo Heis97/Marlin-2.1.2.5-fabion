@@ -39,49 +39,29 @@
 #define I2C_SCL_PIN                       -1
 #define I2C_SDA_PIN                       -1
 
-#if NUM_BOARD == 2
-#define SERVO_C1_PIN                       PB6
-#define SERVO_C2_PIN                       PB7
-#else
-#define SERVO_C1_PIN                       PA9
-#define SERVO_C2_PIN                       PA10
-#endif
+//----------------------------------------------------------------------------
+// Fabion (одна плата, NUM_BOARD 1). Пины пока не назначены: -1 = не подключено.
+// Прошивка проверяет каждый пин на -1 и тогда к нему не обращается.
+//----------------------------------------------------------------------------
+// Сервоприводы захвата шприцов (M577 I0..I2)
+#define SERVO_C1_PIN                       -1
+#define SERVO_C2_PIN                       -1
+#define SERVO_C3_PIN                       -1
 
+// Лазерная система калибровки сопла: 2 входа (0 = луч перекрыт)
+#define LASER_END1_PIN                     -1
+#define LASER_END2_PIN                     -1
+#define LASER_POWER_PIN                    -1
 
-#if NUM_BOARD == 2
-#define LASER_END1_PIN                       -1
-#define LASER_END2_PIN                       -1
-#define LASER_POWER_PIN                       -1
-#else
-#define LASER_END1_PIN                       PB6
-#define LASER_END2_PIN                       PB7
-#define LASER_POWER_PIN                       -1
-#endif
-
-#if NUM_BOARD == 2
-#define TOOL0_RECOGNISE0_PIN                 -1
-#define TOOL0_RECOGNISE1_PIN                 -1
-#define TOOL0_RECOGNISE2_PIN                 -1
-
-#define TOOL1_RECOGNISE0_PIN                 -1
-#define TOOL1_RECOGNISE1_PIN                 -1
-#define TOOL1_RECOGNISE2_PIN                 -1
-
-#define TOOL2_RECOGNISE0_PIN                 -1
-#define TOOL3_RECOGNISE0_PIN                 -1
-#else
-#define TOOL0_RECOGNISE0_PIN                 PE15
-#define TOOL0_RECOGNISE1_PIN                 PE13
-#define TOOL0_RECOGNISE2_PIN                 PE10
-
-#define TOOL1_RECOGNISE0_PIN                 PE14
-#define TOOL1_RECOGNISE1_PIN                 PE12
-#define TOOL1_RECOGNISE2_PIN                 PE9
-
-#define TOOL2_RECOGNISE0_PIN                 PE8
-#define TOOL3_RECOGNISE0_PIN                 PE7
-
-#endif
+// Датчики головок прежней машины — на Fabion не используются
+#define TOOL0_RECOGNISE0_PIN               -1
+#define TOOL0_RECOGNISE1_PIN               -1
+#define TOOL0_RECOGNISE2_PIN               -1
+#define TOOL1_RECOGNISE0_PIN               -1
+#define TOOL1_RECOGNISE1_PIN               -1
+#define TOOL1_RECOGNISE2_PIN               -1
+#define TOOL2_RECOGNISE0_PIN               -1
+#define TOOL3_RECOGNISE0_PIN               -1
 
 //#define I2C_SCL_PIN                       PA9
 //#define I2C_SDA_PIN                       PA10

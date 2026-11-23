@@ -13,14 +13,14 @@ int en_pins  [AXIS_NUM] {X_ENABLE_PIN,Y_ENABLE_PIN,Z_ENABLE_PIN,I_ENABLE_PIN,J_E
 int stop_pins[AXIS_NUM] {X_DIAG_PIN,  Y_DIAG_PIN,  Z_DIAG_PIN,  I_DIAG_PIN,  J_DIAG_PIN,  K_DIAG_PIN,  U_DIAG_PIN,  E0_DIAG_PIN  };
 
 
-int servo_pins[SERVO_NUM]{SERVO_C1_PIN ,SERVO_C2_PIN };
+int servo_pins[SERVO_NUM]{SERVO_C1_PIN ,SERVO_C2_PIN, SERVO_C3_PIN };
 
 int _tool_recognise_pin[8] {TOOL0_RECOGNISE0_PIN,  TOOL0_RECOGNISE1_PIN, TOOL0_RECOGNISE2_PIN, TOOL1_RECOGNISE0_PIN,  TOOL1_RECOGNISE1_PIN, TOOL1_RECOGNISE2_PIN,  TOOL2_RECOGNISE0_PIN,  TOOL3_RECOGNISE0_PIN };
 
-volatile long servo_counter_work[SERVO_NUM]{0,0};
-volatile long servo_counter_work_max[SERVO_NUM]{120,120};
-volatile long servo_counter_20ms[SERVO_NUM]{0,0};
-volatile long servo_counter_20ms_max[SERVO_NUM]{2000,2000}; //20ms
+volatile long servo_counter_work[SERVO_NUM]{0,0,0};
+volatile long servo_counter_work_max[SERVO_NUM]{120,120,120};
+volatile long servo_counter_20ms[SERVO_NUM]{0,0,0};
+volatile long servo_counter_20ms_max[SERVO_NUM]{2000,2000,2000}; //20ms
     
 
 
@@ -76,7 +76,7 @@ StepDirDriverPos::StepDirDriverPos (int* pinStep, int* pinDir, int* pinEn, int* 
     SET_OUTPUT(_pinDir[i]); WRITE(_pinDir[i], LOW);
     SET_OUTPUT(_pinEn[i]); WRITE(_pinDir[i], LOW);
      
-    SET_INPUT(_pinStop[i]);
+    if(PIN_OK(_pinStop[i])) SET_INPUT(_pinStop[i]);   // -1 = концевика нет
     _steps[i] = 0;
     //_fixStop = false;
     _divider[i] = DIV_VEL_ZERO;
@@ -99,32 +99,39 @@ StepDirDriverPos::StepDirDriverPos (int* pinStep, int* pinDir, int* pinEn, int* 
   }
 
   vibro_ampl[E0_AXIS] = 30;
-  sleep(E_AXIS);
+  // E1..E3 (моторы 5..7) спят, пока не нужны
+  sleep(5); sleep(6); sleep(7);
   pin_stop_delta_calibr = E0_DIAG_PIN;
 
   for(int i=0; i<SERVO_NUM;i++)
   {
-    SET_OUTPUT(servo_pins[i]); 
+    if(PIN_OK(servo_pins[i])) { SET_OUTPUT(servo_pins[i]); WRITE(servo_pins[i],0); }
     servo_counter_20ms_max[i] = 2000;
     servo_counter_work_max[i] = 120;
   }
 
-  SET_INPUT_PULLUP(LASER_END1_PIN); 
-  SET_INPUT_PULLUP(LASER_END2_PIN); 
+  if(PIN_OK(LASER_END1_PIN))
+  {
+    SET_INPUT_PULLUP(LASER_END1_PIN);
+    }
+  if(PIN_OK(LASER_END2_PIN))
+  {
+    SET_INPUT_PULLUP(LASER_END2_PIN);
+    }
+  if(PIN_OK(LASER_POWER_PIN))
+  {
+    SET_OUTPUT(LASER_POWER_PIN);
+    WRITE(LASER_POWER_PIN,1);
+    }
+  _laser_end_val[0] = 1;   // 1 = луч цел (нет датчика — считаем, что цел)
+  _laser_end_val[1] = 1;
 
-  SET_OUTPUT(LASER_POWER_PIN); 
-  WRITE(LASER_POWER_PIN,1);
-
-  SET_INPUT_PULLUP(TOOL0_RECOGNISE0_PIN);
-  SET_INPUT_PULLUP(TOOL0_RECOGNISE1_PIN);
-  SET_INPUT_PULLUP(TOOL0_RECOGNISE2_PIN);
-
-  SET_INPUT_PULLUP(TOOL1_RECOGNISE0_PIN);
-  SET_INPUT_PULLUP(TOOL1_RECOGNISE1_PIN);
-  SET_INPUT_PULLUP(TOOL1_RECOGNISE2_PIN);
-
-  SET_INPUT_PULLUP(TOOL2_RECOGNISE0_PIN);
-  SET_INPUT_PULLUP(TOOL3_RECOGNISE0_PIN);
+  for(int i=0; i<8; i++)
+  {
+    _tool_recognise_val[i] = 1;
+    // ::_tool_recognise_pin — глобальный массив пинов (у класса есть одноимённый пустой член)
+    if(PIN_OK(::_tool_recognise_pin[i])) SET_INPUT_PULLUP(::_tool_recognise_pin[i]);
+  }
 
 }
 
@@ -217,8 +224,8 @@ void  StepDirDriverPos::ring_buf_control()
   
     gotopos(ring_buf_x[ring_buf_cur], X_AXIS );
     gotopos(ring_buf_y[ring_buf_cur], Y_AXIS );
-    gotopos(ring_buf_z[ring_buf_cur], Z_AXIS );
-    gotopos(ring_buf_e[ring_buf_cur], E_AXIS );
+    gotopos(ring_buf_z[ring_buf_cur], ring_z_axis );
+    gotopos(ring_buf_e[ring_buf_cur], ring_e_axis );
 
 
     long cur_time = ring_buf_time[ring_buf_cur];
@@ -251,7 +258,7 @@ void  StepDirDriverPos::ring_buf_control()
 
     if(cur_z!=0) 
     {
-      setDiv(abs((float)cur_time/(float)cur_z) , Z_AXIS);
+      setDiv(abs((float)cur_time/(float)cur_z) , ring_z_axis);
       //_dividerCount[Z_AXIS] = _divider[Z_AXIS];
     }
     
@@ -261,7 +268,7 @@ void  StepDirDriverPos::ring_buf_control()
     prev_e = abs_e;
     if(cur_e!=0) 
     {
-      setDiv(abs((float)cur_time/(float)cur_e) , E_AXIS);
+      setDiv(abs((float)cur_time/(float)cur_e) , ring_e_axis);
      // _dividerCount[E_AXIS] = _divider[E_AXIS];
     }
     
@@ -285,7 +292,7 @@ void  StepDirDriverPos::control_servo(byte num)
   {
     servo_counter_work_en[num] = true;
     servo_counter_20ms[num] = 0L;
-    WRITE(servo_pins[num],1);
+    if(PIN_OK(servo_pins[num])) WRITE(servo_pins[num],1);
   }
 
   if(servo_counter_work_en[num])
@@ -293,7 +300,7 @@ void  StepDirDriverPos::control_servo(byte num)
     servo_counter_work[num]++;
     if(servo_counter_work[num]>servo_counter_work_max[num])
     {
-      WRITE(servo_pins[num],0);
+      if(PIN_OK(servo_pins[num])) WRITE(servo_pins[num],0);
       servo_counter_work_en[num] = false;
       servo_counter_work[num] = 0L;
     }
@@ -317,7 +324,7 @@ void  StepDirDriverPos::control() {
     }
 
 
-    if(ring_buf_counter==ring_buf_end && _steps[0] == 0 && _steps[1] == 0 && _steps[2] == 0 && _steps[7] == 0)
+    if(ring_buf_counter==ring_buf_end && _steps[0] == 0 && _steps[1] == 0 && _steps[ring_z_axis] == 0 && _steps[ring_e_axis] == 0)
     {
 
       _programm_done = 1;
@@ -357,6 +364,7 @@ void  StepDirDriverPos::control() {
 
   control_servo(0);
   control_servo(1);
+  control_servo(2);
   
 
   /*if( control_counter%10000 ==0)
@@ -380,7 +388,7 @@ void  StepDirDriverPos::step(long steps, byte num) {
     return;
   }
   
-  if(num==7) WRITE(_pinEn[num], LOW);
+  if(num>=5) WRITE(_pinEn[num], LOW);   // E1..E3 будятся при движении
 
 
   if ( SIGN(steps)*motor_dir[num] < 0 )//*motor_dir[num]
@@ -621,6 +629,7 @@ volatile bool StepDirDriverPos::readHoming_one(byte ax)
 
 byte StepDirDriverPos::readEnd(byte num)
 {
+  if(!PIN_OK(_pinStop[num])) return 0;   // концевика нет
   return READ(_pinStop[num]);
 }
 
@@ -687,7 +696,7 @@ void StepDirDriverPos::home_handler(byte _num)
   {
     if(_num==0)
     {
-      int end_val = READ(pin_stop_delta_calibr);
+      int end_val = PIN_OK(E0_DIAG_PIN) ? READ(pin_stop_delta_calibr) : 1;
       
         if(end_val ==0)
         {
@@ -711,7 +720,7 @@ void StepDirDriverPos::home_handler(byte _num)
         {
           step(0L,X_AXIS);
           step(0L,Y_AXIS);
-          step(0L,Z_AXIS);
+          step(0L,ring_z_axis);
           delta_tcp_serach_x = 2;
           ring_buf_en = false;
         }
@@ -729,7 +738,7 @@ void StepDirDriverPos::home_handler(byte _num)
         {
           step(0L,X_AXIS);
           step(0L,Y_AXIS);
-          step(0L,Z_AXIS);
+          step(0L,ring_z_axis);
           delta_tcp_serach_y = 2;
           ring_buf_en = false;
         }
@@ -747,7 +756,7 @@ void StepDirDriverPos::home_handler(byte _num)
         {
           step(0L,X_AXIS);
           step(0L,Y_AXIS);
-          step(0L,Z_AXIS);
+          step(0L,ring_z_axis);
           delta_tcp_serach_z = 2;
           ring_buf_en = false;
         }
@@ -755,12 +764,18 @@ void StepDirDriverPos::home_handler(byte _num)
     }
   }
 
-  _endstop_val[_num] = READ(_pinStop[_num]);  
-  if(end_inv[_num]>0)
+  // Fabion: READ(-1) на STM32 читает несуществующий порт и роняет плату (HardFault),
+  // поэтому ось без концевика считается «не сработавшей»
+  if(PIN_OK(_pinStop[_num]))
   {
-    if(_endstop_val[_num]==0) _endstop_val[_num] = 1;
-    else _endstop_val[_num] = 0;
+    _endstop_val[_num] = READ(_pinStop[_num]);  
+    if(end_inv[_num]>0)
+    {
+      if(_endstop_val[_num]==0) _endstop_val[_num] = 1;
+      else _endstop_val[_num] = 0;
+    }
   }
+  else _endstop_val[_num] = 0;
 
   if(!_homing_need[_num]) return;
   
@@ -780,19 +795,49 @@ void StepDirDriverPos::home_handler(byte _num)
 
 void  StepDirDriverPos::tool_recognise()
 {
+  for(int i=0; i<8; i++)
+    if(PIN_OK(::_tool_recognise_pin[i])) _tool_recognise_val[i] = READ(::_tool_recognise_pin[i]);
+}
 
+//---------------------------- Fabion: активные Z/E кольцевого буфера
+bool StepDirDriverPos::is_ring_axis(byte num)
+{
+  return num==X_AXIS || num==Y_AXIS || num==ring_z_axis || num==ring_e_axis;
+}
 
-  _tool_recognise_val[0] =  READ(TOOL0_RECOGNISE0_PIN);
-  _tool_recognise_val[1] =  READ(TOOL0_RECOGNISE1_PIN);
-  _tool_recognise_val[2] =  READ(TOOL0_RECOGNISE2_PIN);
+void StepDirDriverPos::set_ring_axes(int z_axis, int e_axis)
+{
+  if(ring_buf_en) return;                 // во время программы не переключаем
+  if(z_axis<2 || z_axis>4) return;        // Z1..Z3 = моторы 2..4
+  if(e_axis<5 || e_axis>7) return;        // E1..E3 = моторы 5..7
+  ring_z_axis = (byte)z_axis;
+  ring_e_axis = (byte)e_axis;
+  // буфер считает приращения от прошлого кадра — начинаем с текущего положения новых осей
+  prev_z = _pos[ring_z_axis];
+  prev_e = _pos[ring_e_axis];
+}
 
-  _tool_recognise_val[3] =  READ(TOOL1_RECOGNISE0_PIN);
-  _tool_recognise_val[4] =  READ(TOOL1_RECOGNISE1_PIN);
-  _tool_recognise_val[5] =  READ(TOOL1_RECOGNISE2_PIN);
-  _tool_recognise_val[6] =  READ(TOOL2_RECOGNISE0_PIN);
-  _tool_recognise_val[7] =  READ(TOOL3_RECOGNISE0_PIN);
+//---------------------------- Fabion: базирование всех осей
+void StepDirDriverPos::home_all_cartesian(float div_vel)
+{
+  step(0L,X_AXIS); step(0L,Y_AXIS);
+  for(byte i=2; i<=4; i++) { setDiv(div_vel,i); home_axis(i); }
+  home_seq_stage = 1;                     // ждём Z1..Z3
+}
 
-
+void StepDirDriverPos::home_seq_handler()
+{
+  if(home_seq_stage==1 && !_homing_need[2] && !_homing_need[3] && !_homing_need[4])
+  {
+    setDiv(_divider[2],X_AXIS); setDiv(_divider[2],Y_AXIS);
+    home_axis(X_AXIS);
+    home_axis(Y_AXIS);
+    home_seq_stage = 2;
+  }
+  else if(home_seq_stage==2 && !_homing_need[X_AXIS] && !_homing_need[Y_AXIS])
+  {
+    home_seq_stage = 0;
+  }
 }
 
 void  StepDirDriverPos::home_handler()
@@ -834,10 +879,7 @@ void  StepDirDriverPos::vel_handler()
 
   if(ring_buf_en)
   {
-    vel_handler(3);
-    vel_handler(4);
-    vel_handler(5);
-    vel_handler(6);
+    for(byte i=0; i<AXIS_NUM; i++) if(!is_ring_axis(i)) vel_handler(i);
   }
   else
   {
@@ -886,12 +928,15 @@ void StepDirDriverPos::idle()
   home_handler();
 
   #ifdef KINEMATIK
-  if(_steps[E_AXIS]==0)
+  // E1..E3: мотор поршня отключается после простоя
+  if(_steps[5]==0 && _steps[6]==0 && _steps[7]==0)
   {
     counter_rest_e++;
     if(counter_rest_e>counter_rest_e_max &&e_en )
     {
-        WRITE(_pinEn[E_AXIS],1);
+        WRITE(_pinEn[5],1);
+        WRITE(_pinEn[6],1);
+        WRITE(_pinEn[7],1);
         e_en = false;
     }
     
@@ -901,13 +946,19 @@ void StepDirDriverPos::idle()
     e_en = true;
     counter_rest_e = 0;
   }
- 
+  home_seq_handler();
   #endif
 
    #if NUM_BOARD == 1
   tool_recognise();
-_laser_end_val[0] = READ(LASER_END1_PIN);
-_laser_end_val[1] = READ(LASER_END2_PIN);
+  if(PIN_OK(LASER_END1_PIN))
+  {
+    _laser_end_val[0] = READ(LASER_END1_PIN);
+    }
+  if(PIN_OK(LASER_END2_PIN))
+  {
+    _laser_end_val[1] = READ(LASER_END2_PIN);
+    }
   
   #endif
 }

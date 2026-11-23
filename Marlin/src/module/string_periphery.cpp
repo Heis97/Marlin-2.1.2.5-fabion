@@ -546,9 +546,9 @@ void StringPeriphery::test_ethernet_loop()
  
           client.println("<h1>Реле: ");
  
-        if(readString.indexOf("p=1") >=0){client.println("ON");WRITE(RELE_PIN,HIGH);}
-        else if(readString.indexOf("p=0") >=0){client.println("OFF");WRITE(RELE_PIN,LOW);}
-        else{client.println("OFF");WRITE(RELE_PIN,LOW);}
+        if(readString.indexOf("p=1") >=0){client.println("ON");if(PIN_OK(RELE_PIN)) WRITE(RELE_PIN,HIGH);}
+        else if(readString.indexOf("p=0") >=0){client.println("OFF");if(PIN_OK(RELE_PIN)) WRITE(RELE_PIN,LOW);}
+        else{client.println("OFF");if(PIN_OK(RELE_PIN)) WRITE(RELE_PIN,LOW);}
  
           client.println("<h1>");
           client.print("<input type=button value='ON' onmousedown=location.href='/?p=1'> ");
@@ -1210,7 +1210,7 @@ turbo_val_cur = v;
 if(v>20)
 {
 
-    WRITE(TURBO_PIN,1);
+    if(PIN_OK(TURBO_PIN)) WRITE(TURBO_PIN,1);
 }
 else
 {
@@ -1287,18 +1287,18 @@ void StringPeriphery::set_reley_press(int v)
     if(v==0) v_set = 1;
     else v_set = 0;
     #endif */
-    WRITE(PRESS_PIN,v_set);
+    if(PIN_OK(PRESS_PIN)) WRITE(PRESS_PIN,v_set);
     reley_press = v;
 };
 
 void StringPeriphery::set_heater_2(int v)
 {
-    WRITE(HEATER_2_PIN,v);
+    if(PIN_OK(HEATER_2_PIN)) WRITE(HEATER_2_PIN,v);
     //turbo = v;
 };
 void StringPeriphery::set_heater_3(int v)
 {
-    WRITE(HEATER_3_PIN,v);
+    if(PIN_OK(HEATER_3_PIN)) WRITE(HEATER_3_PIN,v);
 };
 
 void StringPeriphery::set_24v_out(int v)
@@ -1308,7 +1308,7 @@ void StringPeriphery::set_24v_out(int v)
     if(v==0) v_set = 1;
     else v_set = 0;
     #endif
-   WRITE(RELAY_4_PIN,v_set);
+   if(PIN_OK(RELAY_4_PIN)) WRITE(RELAY_4_PIN,v_set);
    reley_24_out = v;
 }
 
@@ -1319,7 +1319,7 @@ void StringPeriphery::set_24v_reset(int v)
     if(v==0) v_set = 1;
     else v_set = 0;
     #endif
-    WRITE(RELAY_5_PIN,v_set);
+    if(PIN_OK(RELAY_5_PIN)) WRITE(RELAY_5_PIN,v_set);
 }
 
 
@@ -1347,12 +1347,12 @@ String StringPeriphery::state_cur()
     String state = "";
     if (cur_send>=3){cur_send = 0;};
     //cur_send = 0;
-    motors.debug_val  = READ(motors._pinStop[3]);
+    motors.debug_val  = PIN_OK(motors._pinStop[3]) ? READ(motors._pinStop[3]) : 0;
     int homing_delta_done =(int)(motors._homing_need[0]||motors._homing_need[1]||motors._homing_need[2]);
     int move_steppers = 0;
     int move_kinem = 0;
     if(motors._steps[0]!=0 ||motors._steps[1]!=0 ||motors._steps[2]!=0 || motors._steps[3]!=0 ||motors._steps[4]!=0 ||motors._steps[5]!=0 ||motors._steps[6]!=0 ||motors._steps[7]!=0) move_steppers = 1;
-    if(motors._steps[0]!=0 ||motors._steps[1]!=0 ||motors._steps[2]!=0 || motors._steps[7]!=0) move_kinem = 1;
+    if(motors._steps[0]!=0 ||motors._steps[1]!=0 ||motors._steps[motors.ring_z_axis]!=0 || motors._steps[motors.ring_e_axis]!=0) move_kinem = 1;
 
 
     state = "st"+String(NUM_BOARD)+" "+
@@ -1370,7 +1370,8 @@ String StringPeriphery::state_cur()
         String(motors.control_counter)+delim+      //8            //9
         String(motors.delta_tcp_serach_x)+String(motors.delta_tcp_serach_y)+String(motors.delta_tcp_serach_z)+delim+                           //9            //10
         String(motors._tool_recognise_val[0])+String(motors._tool_recognise_val[1])+String(motors._tool_recognise_val[2])+String(motors._tool_recognise_val[3])+ String(motors._tool_recognise_val[4])+String(motors._tool_recognise_val[5])+String(motors._tool_recognise_val[6])+String(motors._tool_recognise_val[7])+delim+                           //10  
-        String(motors.software_endstop_en[0])+String(motors.software_endstop_en[1])+String(motors.software_endstop_en[2])+String(motors.software_endstop_en[3])+ String(motors.software_endstop_en[4])+String(motors.software_endstop_en[5])+String(motors.software_endstop_en[6])+String(motors.software_endstop_en[7])+delim;//10       //11
+        String(motors.software_endstop_en[0])+String(motors.software_endstop_en[1])+String(motors.software_endstop_en[2])+String(motors.software_endstop_en[3])+ String(motors.software_endstop_en[4])+String(motors.software_endstop_en[5])+String(motors.software_endstop_en[6])+String(motors.software_endstop_en[7])+delim+//10       //11
+        String((int)motors.ring_z_axis)+String((int)motors.ring_e_axis)+String(motors.home_seq_stage)+delim;//13 Fabion: активные Z,E и стадия базирования
     }
     else if(cur_send==1)
     {

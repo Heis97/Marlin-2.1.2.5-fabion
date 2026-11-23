@@ -273,8 +273,13 @@ void W5500Class::execCmdSn(SOCKET s, SockCMD _cmd) {
     // Send command to socket
     writeSnCR(s, _cmd);
     // Wait for command to complete
+    // Fabion: не дольше 5 мс — если W5500 не отвечает (обрыв/помеха на SPI),
+    // плата не должна зависать навсегда (иначе сторожевой таймер перезагружает её по кругу)
+    uint32_t t0 = micros();
     while (readSnCR(s))
-    ;
+    {
+      if ((uint32_t)(micros() - t0) > 5000UL) break;
+    }
 }
 
 

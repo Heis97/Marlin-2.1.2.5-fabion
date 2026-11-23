@@ -33,4 +33,7 @@ void GcodeSuite::M588() {
 
     if (parser.seen('A')) motors.ring_buf_en = parser.intval('A');
 
+    // Fabion: выбор шприца для кольцевого буфера: K = мотор Z (2..4), L = мотор E (5..7)
+    if (parser.seen('K') && parser.seen('L')) motors.set_ring_axes(parser.intval('K'), parser.intval('L'));
+
 }

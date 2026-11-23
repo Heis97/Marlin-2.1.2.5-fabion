@@ -1146,6 +1146,10 @@ void setup() {
 
 
 
+    // Fabion: параметры пользовательских термисторов (TEMP_SENSOR_x 1000) должны быть заданы ДО thermalManager.init().
+    // Иначе init() считает пределы температуры по нулевым коэффициентам, цикл подбора MAXTEMP не заканчивается,
+    // и плата перезагружается сторожевым таймером по кругу. (settings.first_load(), который их задаёт, вызывается позже.)
+    TERN_(HAS_USER_THERMISTORS, thermalManager.reset_user_thermistors());
     SETUP_RUN(thermalManager.init());   // Initialize temperature loop
  SETUP_RUN(settings.first_load()); 
   string_manager.init();

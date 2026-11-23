@@ -4,6 +4,7 @@
  * by Arduino.org team
  */
  
+#include "Arduino.h"
 #include "w5500.h"
 #include "socket.h"
 
@@ -393,9 +394,11 @@ int sendUDP(SOCKET s)
   w5500.execCmdSn(s, Sock_SEND);
 		
   /* +2008.01 bj */
+  // Fabion: не дольше 5 мс (см. execCmdSn)
+  uint32_t t0 = micros();
   while ( (w5500.readSnIR(s) & SnIR::SEND_OK) != SnIR::SEND_OK ) 
   {
-    if (w5500.readSnIR(s) & SnIR::TIMEOUT)
+    if ((w5500.readSnIR(s) & SnIR::TIMEOUT) || (uint32_t)(micros() - t0) > 5000UL)
     {
       /* +2008.01 [bj]: clear interrupt */
       w5500.writeSnIR(s, (SnIR::SEND_OK|SnIR::TIMEOUT));
