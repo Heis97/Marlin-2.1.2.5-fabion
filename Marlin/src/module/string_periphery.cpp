@@ -1479,23 +1479,23 @@ String StringPeriphery::state_cur()
     else if(cur_send==2)
     {
         state += 
-        /*String(motors.ring_buf_all_counter_write_max)+delim+//3
-        String(motors.ring_buf_cur_count)+delim+//4
+        String(motors._endstop_val[0])+delim+//3
+        String(motors._endstop_val[1])+delim+//4
         String(motors._endstop_val[2])+delim+//5
         String(motors._endstop_val[3])+delim+//6
         String(motors._endstop_val[4])+delim+//7
         String(motors._endstop_val[5])+delim+//8
         String(motors._endstop_val[6])+delim+//9
-        String(motors._endstop_val[7])+delim;//10*/
+        String(motors._endstop_val[7])+delim;//10
 
-        String(motors.ring_buf_all_counter_write)+delim+//3
+        /*String(motors.ring_buf_all_counter_write)+delim+//3
         String(motors.ring_buf_counter)+delim+//4
         String(motors.ring_buf_end)+delim+//4
         String(motors.ring_buf_cur_line)+delim+//5
         String(motors.ring_buf_time[motors.ring_buf_cur])+delim+//6
         String(motors.ring_buf_prog_num[motors.ring_buf_cur])+delim+//6
         String(motors.cur_prog_num)+delim+//7
-        String((int)(thermalManager.temp_bed.celsius*100))+delim;//8
+        String((int)(thermalManager.temp_bed.celsius*100))+delim;//8    */    
         //String(motors.control_counter)+delim;//10      //11
 
        /*String(motors.servo_counter_20ms[0])+delim+//3

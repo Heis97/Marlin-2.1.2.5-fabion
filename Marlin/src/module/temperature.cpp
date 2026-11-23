@@ -1296,22 +1296,24 @@ inline void loud_kill(FSTR_P const lcd_msg, const heater_id_t heater_id) {
   kill(lcd_msg, HEATER_FSTR(heater_id));
 }
 
+// Fabion: последняя ошибка температуры (заполняется в _temp_error, печатается в task())
+static FSTR_P volatile fabion_temp_err_msg = nullptr;
+static volatile int8_t fabion_temp_err_id = 0;
+static volatile uint32_t fabion_temp_err_count = 0;
+
 void Temperature::_temp_error(const heater_id_t heater_id, FSTR_P const serial_msg, FSTR_P const lcd_msg) {
 
   // Fabion: ошибка датчика температуры (обрыв, КЗ, перегрев) НЕ останавливает плату.
   // Нагреватели Marlin выключаются, сообщение печатается в USB не чаще раза в 2 с,
   // остальное (моторы, связь со шлюзом) продолжает работать. Блок можно отсоединять на холодную.
+  // Вызывается в том числе из прерывания температуры, поэтому здесь НИЧЕГО не печатаем
+  // (вывод в USB из прерывания может повесить плату) — только запоминаем ошибку.
+  // Сообщение печатает Temperature::task() из основного цикла.
   #if 1
-    static millis_t next_report_ms = 0;
-    if (ELAPSED(millis(), next_report_ms)) {
-      next_report_ms = millis() + 2000;
-      SERIAL_ERROR_START();
-      SERIAL_ECHOF(serial_msg);
-      SERIAL_ECHOPGM(STR_STOPPED_HEATER);
-      if (heater_id >= 0) SERIAL_ECHOLNPGM("E", heater_id); else SERIAL_ECHOLNPGM("bed/other ", heater_id);
-    }
+    fabion_temp_err_msg = serial_msg;
+    fabion_temp_err_id = (int8_t)heater_id;
+    fabion_temp_err_count++;
     disable_all_heaters();
-    hal.watchdog_refresh();
     UNUSED(lcd_msg);
     return;
   #endif
@@ -1882,6 +1884,27 @@ void Temperature::mintemp_error(const heater_id_t heater_id) {
  */
 void Temperature::task() {
   if (marlin_state == MF_INITIALIZING) return hal.watchdog_refresh(); // If Marlin isn't started, at least reset the watchdog!
+
+  // Fabion: сообщение об ошибке датчика — не чаще раза в 2 с, из основного цикла
+  {
+    static millis_t next_err_report_ms = 0;
+    static uint32_t reported_count = 0;
+    if (fabion_temp_err_count != reported_count && ELAPSED(millis(), next_err_report_ms)) {
+      next_err_report_ms = millis() + 2000;
+      reported_count = fabion_temp_err_count;
+      SERIAL_ERROR_START();
+      if (fabion_temp_err_msg) SERIAL_ECHOF(fabion_temp_err_msg);
+      SERIAL_ECHOPGM(STR_STOPPED_HEATER);
+      if (fabion_temp_err_id >= 0) SERIAL_ECHOLNPGM("E", fabion_temp_err_id);
+      else SERIAL_ECHOLNPGM("bed/other ", fabion_temp_err_id);
+      #if HAS_HEATED_BED
+        SERIAL_ECHOLNPGM("bed T=", degBed());
+      #endif
+      #if HAS_HOTEND
+        SERIAL_ECHOLNPGM("E0 T=", degHotend(0));
+      #endif
+    }
+  }
 
  static bool no_reentry = false;  // Prevent recursion
   if (no_reentry) return;

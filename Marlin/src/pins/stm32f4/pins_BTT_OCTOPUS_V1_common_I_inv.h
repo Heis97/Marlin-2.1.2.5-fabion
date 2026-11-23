@@ -76,10 +76,10 @@
 //
 // Trinamic Stallguard pins
 //
-#define X_DIAG_PIN                        -1 // 
-#define Y_DIAG_PIN                         -1   // 
-#define Z_DIAG_PIN                         -1  // 
-#define I_DIAG_PIN                         -1  // 
+#define X_DIAG_PIN                        PE8 // 
+#define Y_DIAG_PIN                         PE9   // 
+#define Z_DIAG_PIN                         PE7  // 
+#define I_DIAG_PIN                         PA6  // 
 #define J_DIAG_PIN                         -1  // 
 #define K_DIAG_PIN                         -1  // 
 #define U_DIAG_PIN                         -1  // 
@@ -342,32 +342,7 @@
 
 #endif // HAS_TMC_UART
 
-/**               ------                                      ------
- * (BEEPER) PE8  | 1  2 | PE7  (BTN_ENC)         (MISO) PA6  | 1  2 | PA5  (SCK)
- * (LCD_EN) PE9  | 3  4 | PE10 (LCD_RS)       (BTN_EN1) PB2  | 3  4 | PA4  (SD_SS)
- * (LCD_D4) PE12   5  6 | PE13 (LCD_D5)       (BTN_EN2) PB1    5  6 | PA7  (MOSI)
- * (LCD_D6) PE14 | 7  8 | PE15 (LCD_D7)     (SD_DETECT) PC15 | 7  8 | RESET
- *           GND | 9 10 | 5V                             GND | 9 10 | --
- *                ------                                      ------
- *                 EXP1                                        EXP2
- */
-#define EXP1_01_PIN                         -1
-#define EXP1_02_PIN                         -1
-#define EXP1_03_PIN                         -1
-#define EXP1_04_PIN                         -1
-#define EXP1_05_PIN                         -1
-#define EXP1_06_PIN                         -1
-#define EXP1_07_PIN                         -1
-#define EXP1_08_PIN                         -1
 
-#define EXP2_01_PIN                         -1
-#define EXP2_02_PIN                         -1
-#define EXP2_03_PIN                         -1
-#define EXP2_04_PIN                         -1
-#define EXP2_05_PIN                         -1
-#define EXP2_06_PIN                         -1
-#define EXP2_07_PIN                         -1
-#define EXP2_08_PIN                         -1
 
 
 //
