@@ -49,8 +49,8 @@
 #define SERVO_C3_PIN                       -1
 
 // Лазерная система калибровки сопла: 2 входа (0 = луч перекрыт)
-#define LASER_END1_PIN                     -1
-#define LASER_END2_PIN                     -1
+#define LASER_END1_PIN                     PB8
+#define LASER_END2_PIN                     PB9
 #define LASER_POWER_PIN                    -1
 
 // Датчики головок прежней машины — на Fabion не используются
@@ -76,14 +76,24 @@
 //
 // Trinamic Stallguard pins
 //
-#define X_DIAG_PIN                        PG6   // 
-#define Y_DIAG_PIN                         PG9   // 
-#define Z_DIAG_PIN                         PG10  // 
-#define I_DIAG_PIN                         PG11  // 
+#define X_DIAG_PIN                        -1 // 
+#define Y_DIAG_PIN                         -1   // 
+#define Z_DIAG_PIN                         -1  // 
+#define I_DIAG_PIN                         -1  // 
+#define J_DIAG_PIN                         -1  // 
+#define K_DIAG_PIN                         -1  // 
+#define U_DIAG_PIN                         -1  // 
+#define E0_DIAG_PIN                         -1  // 
+
+
+/*#define X_DIAG_PIN                        PE8  // 
+#define Y_DIAG_PIN                         PE7   // 
+#define Z_DIAG_PIN                         PE9  // 
+#define I_DIAG_PIN                         PA6  // 
 #define J_DIAG_PIN                         PG12  // 
 #define K_DIAG_PIN                         PG13  // 
 #define U_DIAG_PIN                         PG14  // 
-#define E0_DIAG_PIN                         PG15  // 
+#define E0_DIAG_PIN                         PG15  // */
 
 
 //
@@ -289,7 +299,7 @@
 //
 // Temperature Sensors
 //
-#define TEMP_BED_PIN                        -1   // TB
+#define TEMP_BED_PIN                        PF3   // TB
 #define TEMP_1_PIN                          -1   // TH1
 #define TEMP_2_PIN                          -1   // TH2
 #define TEMP_3_PIN                          -1   // TH3
@@ -297,7 +307,7 @@
 //
 // Heaters / Fans
 //
-#define HEATER_BED_PIN                   -1//   PA0 //PA10  // Hotbed
+#define HEATER_BED_PIN                   PA1//   PA0 //PA10  // Hotbed
 #define HEATER_0_PIN                        PA0 //PA1  // Heater0//PA0
 #define HEATER_1_PIN                        -1//PA3   // Heater1
 #define HEATER_2_PIN                       -1  // Heater2 PB0   //PA8

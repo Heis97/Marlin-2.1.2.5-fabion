@@ -1298,6 +1298,24 @@ inline void loud_kill(FSTR_P const lcd_msg, const heater_id_t heater_id) {
 
 void Temperature::_temp_error(const heater_id_t heater_id, FSTR_P const serial_msg, FSTR_P const lcd_msg) {
 
+  // Fabion: ошибка датчика температуры (обрыв, КЗ, перегрев) НЕ останавливает плату.
+  // Нагреватели Marlin выключаются, сообщение печатается в USB не чаще раза в 2 с,
+  // остальное (моторы, связь со шлюзом) продолжает работать. Блок можно отсоединять на холодную.
+  #if 1
+    static millis_t next_report_ms = 0;
+    if (ELAPSED(millis(), next_report_ms)) {
+      next_report_ms = millis() + 2000;
+      SERIAL_ERROR_START();
+      SERIAL_ECHOF(serial_msg);
+      SERIAL_ECHOPGM(STR_STOPPED_HEATER);
+      if (heater_id >= 0) SERIAL_ECHOLNPGM("E", heater_id); else SERIAL_ECHOLNPGM("bed/other ", heater_id);
+    }
+    disable_all_heaters();
+    hal.watchdog_refresh();
+    UNUSED(lcd_msg);
+    return;
+  #endif
+
   static uint8_t killed = 0;
 
   if (IsRunning() && TERN1(BOGUS_TEMPERATURE_GRACE_PERIOD, killed == 2)) {

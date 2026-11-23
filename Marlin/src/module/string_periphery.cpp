@@ -73,7 +73,80 @@ volatile float debug_vel3 = 0.0f;
 
 bool pfled_state[10]{false,false,false,false,false,false,false,false,false,false};
 bool pfled_state_cur[10]{false,false,false,false,false,false,false,false,false,false};
+//==================== ПЕЛЬТЬЕ через IBT-2 (блок 1) ====================
+#define PELT_HEAT_PIN      PB6     // SERVO -> IBT-2 RPWM (нагрев)
+#define PELT_COOL_PIN      PB7     // PROBE -> IBT-2 LPWM (охлаждение)
+#define PELT_FAN_PIN       PE11    // PS-ON -> IN модуля реле кулера
+#define PELT_FAN_ON_LEVEL  1       // 1 - реле включается высоким уровнем, 0 - низким
+#define PELT_FAN_RUNON_MS  30000   // кулер работает ещё 30 с после остановки Пельтье
+#define PELT_PWM_FREQ      20000   // Гц; 10000, если мост без радиатора
+#define PELT_MAX_DUTY      90      // из 255 (~35%); с питанием от платы не выше 128
+#define PELT_MIN_DUTY      0
+#define PELT_KP            40.0f
+#define PELT_KI            0.5f
+#define PELT_KD            0.0f
+#define PELT_T_MIN         5.0f    // вне диапазона -> выключение (обрыв/КЗ датчика)
+#define PELT_T_MAX         45.0f
 
+static float    pelt_i = 0, pelt_last_t = 0;
+static int      pelt_out = 0;          // + нагрев, - охлаждение
+static millis_t pelt_last_active = 0;
+static bool     pelt_fan_state   = false;
+
+static void pelt_fan(bool on)
+{
+    pelt_fan_state = on;
+    WRITE(PELT_FAN_PIN, on ? PELT_FAN_ON_LEVEL : !PELT_FAN_ON_LEVEL);
+}
+
+static void pelt_write(int u)
+{
+    pelt_out = u;
+    if (u > 0) {
+        hal.set_pwm_duty(pin_t(PELT_COOL_PIN), 0);
+        hal.set_pwm_duty(pin_t(PELT_HEAT_PIN), (uint16_t)u);
+    } else {
+        hal.set_pwm_duty(pin_t(PELT_HEAT_PIN), 0);
+        hal.set_pwm_duty(pin_t(PELT_COOL_PIN), (uint16_t)(-u));
+    }
+}
+
+static void pelt_init()
+{
+    pinMode(PELT_FAN_PIN, OUTPUT);
+    pelt_fan(false);
+    hal.set_pwm_frequency(pin_t(PELT_HEAT_PIN), PELT_PWM_FREQ);
+    hal.set_pwm_frequency(pin_t(PELT_COOL_PIN), PELT_PWM_FREQ);
+    pelt_write(0);
+}
+
+static void pelt_manage(float t, float target, float dt)
+{
+    const millis_t now = millis();
+    int ui = 0;
+
+    if (target >= 1.0f && t >= PELT_T_MIN && t <= PELT_T_MAX) {
+        const float e = target - t;
+        pelt_i = constrain(pelt_i + PELT_KI * e * dt, -PELT_MAX_DUTY, PELT_MAX_DUTY);
+        float u = PELT_KP * e + pelt_i - PELT_KD * (t - pelt_last_t) / dt;
+        u = constrain(u, -PELT_MAX_DUTY, PELT_MAX_DUTY);
+        ui = (int)u;
+        if (ui >= 0 && ui <  PELT_MIN_DUTY) ui =  PELT_MIN_DUTY;
+        if (ui <  0 && ui > -PELT_MIN_DUTY) ui = -PELT_MIN_DUTY;
+    } else {
+        pelt_i = 0;
+    }
+    pelt_last_t = t;
+
+    if (ui != 0) pelt_last_active = now;
+
+    const bool need_fan = (ui != 0)
+                       || (now - pelt_last_active < PELT_FAN_RUNON_MS)
+                       || (t > PELT_T_MAX);           // перегрев/обрыв - обдув включён
+    if (need_fan != pelt_fan_state) pelt_fan(need_fan);
+
+    pelt_write(ui);
+}
 void StringPeriphery::init()
 {
     pinMode(RELAY_0_PIN,OUTPUT);
@@ -104,7 +177,7 @@ void StringPeriphery::init()
     //max_test1.begin(MAX31865_2WIRE,1000,4300,0);
     #endif
     DELAY_US(100000);
-
+   //pelt_init();
     string_ethernet_begin_3();
 };
 
@@ -861,6 +934,23 @@ void StringPeriphery::idle()
         string_ethernet_loop_3();
     }
 
+
+    {
+        static unsigned long pelt_time_mcs = 0;
+        if (cur_time_mc - pelt_time_mcs > 100000UL)          // 10 раз в секунду
+        {
+            pelt_time_mcs = cur_time_mc;
+            // Fabion: датчик вне диапазона (обрыв при снятом блоке, КЗ) — Пельтье выключается
+            // и остаётся выключенным, пока его снова не включат из интерфейса.
+            const float pelt_t = thermalManager.degHotend(0);
+            if (heater_en && (pelt_t < PELT_T_MIN || pelt_t > PELT_T_MAX))
+            {
+                heater_en = 0;
+                SERIAL_ECHOLNPGM("Peltier 1: sensor out of range, heating OFF");
+            }
+           // pelt_manage(pelt_t, heater_en ? temp_dest : 0.0f, 0.1f);
+        }
+    }
     #if NUM_BOARD == 2
     if(dt_temp>period_manage_mcs  )
     {        
@@ -1405,7 +1495,7 @@ String StringPeriphery::state_cur()
         String(motors.ring_buf_time[motors.ring_buf_cur])+delim+//6
         String(motors.ring_buf_prog_num[motors.ring_buf_cur])+delim+//6
         String(motors.cur_prog_num)+delim+//7
-        String(motors.ring_buf_x[motors.ring_buf_cur])+delim;//8
+        String((int)(thermalManager.temp_bed.celsius*100))+delim;//8
         //String(motors.control_counter)+delim;//10      //11
 
        /*String(motors.servo_counter_20ms[0])+delim+//3
@@ -1746,31 +1836,12 @@ void StringPeriphery::heat_pwm_control_single(int ind, int counter, int duty)
 void StringPeriphery::set_heaters_enable(int v)
 {
     heater_en = v;
-
-    if(heater_en == 1)
-    {
-        thermalManager.setTargetHotend(temp_dest, 0);
-       
-    }
-    else
-    {
-         thermalManager.disable_all_heaters();
-    }
-    
-
+    thermalManager.setTargetHotend(0, 0);   // блоком 1 управляет Пельтье, штатный PID на PA0 не нужен
 };
 void StringPeriphery::set_heaters_temp(float v)
 {
     temp_dest = v;
-
-    if(heater_en == 1)
-    {
-        thermalManager.setTargetHotend(temp_dest, 0);
-    }
-    else
-    {
-        thermalManager.disable_all_heaters();
-    }
+    thermalManager.setTargetHotend(0, 0);
 };
 
 void StringPeriphery::set_heaters_ind(int v)
