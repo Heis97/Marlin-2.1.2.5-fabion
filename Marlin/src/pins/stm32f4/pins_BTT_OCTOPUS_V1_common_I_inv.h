@@ -44,7 +44,7 @@
 // Прошивка проверяет каждый пин на -1 и тогда к нему не обращается.
 //----------------------------------------------------------------------------
 // Сервоприводы захвата шприцов (M577 I0..I2)
-#define SERVO_C1_PIN                       -1
+#define SERVO_C1_PIN                       PA4
 #define SERVO_C2_PIN                       -1
 #define SERVO_C3_PIN                       -1
 
@@ -79,7 +79,7 @@
 #define X_DIAG_PIN                        PE8 // 
 #define Y_DIAG_PIN                         PE9   // 
 #define Z_DIAG_PIN                         PE7  // 
-#define I_DIAG_PIN                         PA6  // 
+#define I_DIAG_PIN                         PE10  // 
 #define J_DIAG_PIN                         -1  // 
 #define K_DIAG_PIN                         -1  // 
 #define U_DIAG_PIN                         -1  // 

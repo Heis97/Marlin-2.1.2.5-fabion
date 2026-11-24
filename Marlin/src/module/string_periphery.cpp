@@ -59,13 +59,13 @@ char rcvbuf_udp[UDP_PACKET_LEN ];
 float med_fil_tens[TENSOMETR_NUM][MED_FILTR_LEN]{};
 long med_fil_len[TENSOMETR_NUM][MED_FILTR_LEN]{};
 
-#define SPI_SOFT2_MOSI PA7
+/*#define SPI_SOFT2_MOSI PA7
 #define SPI_SOFT2_MISO PA6
 #define SPI_SOFT2_SCK PA5
 #define SPI_SOFT2_CS  PA4
 //uint8_t mosi, uint8_t miso, uint8_t sck
 SoftSPIB soft_spi_2(SPI_SOFT2_MOSI,SPI_SOFT2_MISO,SPI_SOFT2_SCK);
-
+*/
 
 volatile float debug_vel1 = 0.0f;
 volatile float debug_vel2 = 0.0f;
@@ -182,7 +182,7 @@ void StringPeriphery::init()
 };
 
 
-void StringPeriphery::string_spi_begin()
+/*void StringPeriphery::string_spi_begin()
 {
   soft_spi_2.begin();
   soft_spi_2.setBitOrder(MSBFIRST);
@@ -190,7 +190,7 @@ void StringPeriphery::string_spi_begin()
   pinMode(SPI_SOFT2_CS,OUTPUT);
    pinMode(SPI_SOFT2_MISO,INPUT);
   memset(rcvbuf, 'k', sizeof(rcvbuf));
-};
+};*/
 void StringPeriphery::test_spi_loop_part1(uint8_t num)
 {
     //char c = 54;
@@ -240,7 +240,7 @@ long string_len_com_test = 0;
 
 float delta_cur_max = 0;
 int vel_count_2 = 0;
-
+/*
 void StringPeriphery::string_spi_loop()
 {
 
@@ -262,13 +262,7 @@ void StringPeriphery::string_spi_loop()
     if(dtime <=0 ) dtime = 1;
     //Serial.print(dtime);
    // Serial.print(" dtime ");
-/*
-    for(int i=0; i<SPI_PACKET_LEN;i++)
-    {
-       Serial.print(rcvbuf[i]);
-    }
-    Serial.println("->rcvbuf");
-*/
+
     //--------------------------------------------------------------------
 
     bool res_parse_ts = true;
@@ -323,7 +317,7 @@ void StringPeriphery::string_spi_loop()
     //cur_speed_enc[0] = (float)( (double)cur_speed_enc[0] -0.01* ((double)cur_speed_enc[0]- (double)(dstr_test*1000000)/(double)dtime));
  
 };
-
+*/
 long string_lenght_dest_one = 0;
 
 void StringPeriphery::set_current_lenght_string(float dist)
