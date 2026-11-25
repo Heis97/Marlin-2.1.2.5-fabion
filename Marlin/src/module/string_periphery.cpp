@@ -936,18 +936,18 @@ void StringPeriphery::idle()
             pelt_time_mcs = cur_time_mc;
             // Fabion: датчик вне диапазона (обрыв при снятом блоке, КЗ) — Пельтье выключается
             // и остаётся выключенным, пока его снова не включат из интерфейса.
-            /*const float pelt_t = thermalManager.degHotend(0);
+            const float pelt_t = thermalManager.degHotend(0);
             if (heater_en && (pelt_t < PELT_T_MIN || pelt_t > PELT_T_MAX))
             {
                 heater_en = 0;
                 SERIAL_ECHOLNPGM("Peltier 1: sensor out of range, heating OFF");
             }
                 pelt_manage(pelt_t, heater_en ? temp_dest : 0.0f, 0.1f); 
-            */
+            
 
-            const float pelt_t = 25.0f;
+           // const float pelt_t = 25.0f;
 
-            pelt_manage(pelt_t, 5.0f, 0.1f); 
+           // pelt_manage(pelt_t, 5.0f, 0.1f); 
         }
     }
     #if NUM_BOARD == 2
