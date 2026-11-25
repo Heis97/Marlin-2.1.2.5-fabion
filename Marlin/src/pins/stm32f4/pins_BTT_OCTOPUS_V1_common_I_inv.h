@@ -79,11 +79,11 @@
 #define X_DIAG_PIN                        PE8 // 
 #define Y_DIAG_PIN                         PE9   // 
 #define Z_DIAG_PIN                         PE7  // 
-#define I_DIAG_PIN                         PE10  // 
-#define J_DIAG_PIN                         -1  // 
-#define K_DIAG_PIN                         -1  // 
-#define U_DIAG_PIN                         -1  // 
-#define E0_DIAG_PIN                         -1  // 
+#define I_DIAG_PIN                         PE8  // 
+#define J_DIAG_PIN                         PE8  // 
+#define K_DIAG_PIN                         PE8 // 
+#define U_DIAG_PIN                         PE8  // 
+#define E0_DIAG_PIN                         PE8  // 
 
 
 /*#define X_DIAG_PIN                        PE8  // 
