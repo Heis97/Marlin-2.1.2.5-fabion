@@ -85,7 +85,10 @@ bool pfled_state_cur[10]{false,false,false,false,false,false,false,false,false,f
 #define PELT_KP            40.0f
 #define PELT_KI            0.5f
 #define PELT_KD            0.0f
-#define PELT_T_MIN         5.0f    // вне диапазона -> выключение (обрыв/КЗ датчика)
+#define PELT_T_MIN        -5.0f    // вне диапазона -> выключение (обрыв/КЗ датчика).
+                                    // Ниже уставки 5 °C с запасом: при охлаждении до 5 °C и небольшом
+                                    // перерегулировании Пельтье не должен отключаться. Обрыв датчика 10 кОм
+                                    // читается как температура намного ниже -5 °C.
 #define PELT_T_MAX         45.0f
 
 static float    pelt_i = 0, pelt_last_t = 0;
@@ -1444,6 +1447,17 @@ String StringPeriphery::state_cur()
     if(motors._steps[0]!=0 ||motors._steps[1]!=0 ||motors._steps[motors.ring_z_axis]!=0 || motors._steps[motors.ring_e_axis]!=0) move_kinem = 1;
 
 
+    #if NUM_BOARD == 1
+      // Fabion: флаг «ожидание температуры» для M109/M190 в шлюзе.
+      // Шприц (Пельтье) — пока температура дальше 1 °C от уставки в любую сторону;
+      // стол (только нагрев) — пока он холоднее уставки больше чем на 1 °C.
+      {
+        bool w = false;
+        if (heater_en && fabs(thermalManager.degHotend(0) - temp_dest) > 1.0f) w = true;
+        if (thermalManager.degTargetBed() > 0 && thermalManager.degTargetBed() - thermalManager.degBed() > 1.0f) w = true;
+        wait_temp_en = w ? 1 : 0;
+      }
+    #endif
     state = "st"+String(NUM_BOARD)+" "+
     String(cur_line_num)+delim+            //0          //1
     String(motors.ring_buf_all_counter_write_max)+delim+//1           //2    //ring_buf_control_counter   //motors.ring_buf_all_counter_write
@@ -1477,15 +1491,11 @@ String StringPeriphery::state_cur()
     }
     else if(cur_send==2)
     {
+        // Fabion: концевики уже идут в cur_send==0 — здесь температуры (каждая посылка покороче)
         state += 
-        String(motors._endstop_val[0])+delim+//3
-        String(motors._endstop_val[1])+delim+//4
-        String(motors._endstop_val[2])+delim+//5
-        String(motors._endstop_val[3])+delim+//6
-        String(motors._endstop_val[4])+delim+//7
-        String(motors._endstop_val[5])+delim+//8
-        String(motors._endstop_val[6])+delim+//9
-        String(motors._endstop_val[7])+delim;//10
+        String((int)(thermalManager.degBed()*100))+delim+                    //5 температура стола *100
+        String((int)(heater_en ? temp_dest*100 : 0))+delim+                  //6 уставка шприца (Пельтье) *100, 0 — выкл
+        String((int)(thermalManager.degTargetBed()*100))+delim;              //7 уставка стола *100, 0 — выкл
 
         /*String(motors.ring_buf_all_counter_write)+delim+//3
         String(motors.ring_buf_counter)+delim+//4
@@ -1839,7 +1849,7 @@ void StringPeriphery::set_heaters_enable(int v)
 };
 void StringPeriphery::set_heaters_temp(float v)
 {
-    temp_dest = v;
+    temp_dest = constrain(v, 5.0f, 37.0f);   // Fabion: допустимый диапазон шприца 5–37 °C
     thermalManager.setTargetHotend(0, 0);
 };
 
