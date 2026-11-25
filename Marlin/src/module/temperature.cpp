@@ -2437,6 +2437,14 @@ void Temperature::updateTemperaturesFromRawValues() {
   TERN_(FILAMENT_WIDTH_SENSOR, filwidth.update_measured_mm());
   TERN_(HAS_POWER_MONITOR,     power_monitor.capture_values());*/
 
+  // Fabion: пересчёт сырых значений АЦП в °C. В прошивке прежней машины весь блок выше был
+  // закомментирован (температура приходила с MAX31865 и записывалась в celsius напрямую),
+  // поэтому TH0 и TB всегда показывали 0 °C. Датчики Fabion — термисторы на АЦП (PF4, PF3).
+  #if HAS_HOTEND
+    HOTEND_LOOP() temp_hotend[e].celsius = analog_to_celsius_hotend(temp_hotend[e].getraw(), e);
+  #endif
+  TERN_(HAS_HEATED_BED, temp_bed.celsius = analog_to_celsius_bed(temp_bed.getraw()));
+
   #if HAS_HOTEND
     static constexpr int8_t temp_dir[HOTENDS] = {
       #if TEMP_SENSOR_IS_ANY_MAX_TC(0)
@@ -3459,6 +3467,15 @@ void Temperature::update_raw_temperatures() {
   TERN_(HAS_JOY_ADC_X, joystick.x.update());
   TERN_(HAS_JOY_ADC_Y, joystick.y.update());
   TERN_(HAS_JOY_ADC_Z, joystick.z.update());*/
+
+  // Fabion: перенос накопленных отсчётов АЦП в raw. В прошивке прежней машины весь блок выше
+  // был закомментирован, raw оставался 0 и пересчитывался в 999 °C (и для TH0, и для TB).
+  #if HAS_TEMP_ADC_0 && !TEMP_SENSOR_IS_MAX_TC(0)
+    temp_hotend[0].update();
+  #endif
+  #if HAS_TEMP_ADC_BED && !TEMP_SENSOR_IS_MAX_TC(BED)
+    temp_bed.update();
+  #endif
 }
 
 /**
