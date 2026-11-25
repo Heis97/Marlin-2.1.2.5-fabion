@@ -177,7 +177,7 @@ void StringPeriphery::init()
     //max_test1.begin(MAX31865_2WIRE,1000,4300,0);
     #endif
     DELAY_US(100000);
-   //pelt_init();
+   pelt_init();
     string_ethernet_begin_3();
 };
 
